@@ -75,3 +75,18 @@ class LoyaltyMemberRegistered(GameEvent):
     member_count: int = 0
     program_year: int = 0
     event_type: str = field(default="LoyaltyMemberRegistered")
+
+
+__all__ = [
+    "SocialScoreAdjusted",
+    "ScandalStarted",
+    "ScandalMarkerDecayed",
+    "RegulatoryFinding",
+    "RegulatoryStatusUpdated",
+    "DilemmaTriggered",
+    "DilemmaResolved",
+    "InvestigationStarted",
+    "InvestigationStageAdvanced",
+    "CustomerReviewSubmitted",
+    "LoyaltyMemberRegistered",
+]

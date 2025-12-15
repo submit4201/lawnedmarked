@@ -59,3 +59,15 @@ class CancelVendorContract(GameEvent):
     vendor_id: str = ""
     penalty_amount: float = 0.0
     event_type: str = field(default="CancelVendorContract")
+
+
+__all__ = [
+    "VendorTierPromoted",
+    "VendorTierDemoted",
+    "VendorPriceFluctuated",
+    "VendorNegotiationResult",
+    "ExclusiveContractSigned",
+    "DeliveryDisruption",
+    "VendorTermsUpdated",
+    "CancelVendorContract",
+]
