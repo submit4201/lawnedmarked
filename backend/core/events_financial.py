@@ -8,6 +8,16 @@ class FundsTransferred(GameEvent):
     description: str = ""
     event_type: str = field(default="FundsTransferred")
 
+
+__all__ = [
+    "PriceSet",
+    "LoanTaken",
+    "DebtPaymentProcessed",
+    "FundsTransferred",
+    "MarketingInvested",
+    "TaxLiabilityCalculated",
+]
+
 @dataclass(frozen=True)
 class LoanTaken(GameEvent):
     loan_id: str = ""

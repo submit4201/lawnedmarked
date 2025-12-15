@@ -40,3 +40,12 @@ class BenefitImplemented(GameEvent):
     annual_cost_per_employee: float = 0.0
     employee_count: int = 0
     event_type: str = field(default="BenefitImplemented")
+
+
+__all__ = [
+    "StaffHired",
+    "StaffFired",
+    "StaffQuit",
+    "WageAdjusted",
+    "BenefitImplemented",
+]

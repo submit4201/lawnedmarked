@@ -59,3 +59,15 @@ class MachineStatusChanged(GameEvent):
     new_status: str = ""
     reason: str = ""
     event_type: str = field(default="MachineStatusChanged")
+
+
+__all__ = [
+    "EquipmentPurchased",
+    "EquipmentSold",
+    "EquipmentRepaired",
+    "SuppliesAcquired",
+    "StockoutStarted",
+    "StockoutEnded",
+    "NewLocationOpened",
+    "MachineStatusChanged",
+]

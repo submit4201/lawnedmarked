@@ -52,3 +52,14 @@ class MachineBrokenDown(GameEvent):
     machine_id: str = ""
     reason: str = ""
     event_type: str = field(default="MachineBrokenDown")
+
+
+__all__ = [
+    "TimeAdvanced",
+    "DailyRevenueProcessed",
+    "WeeklyFixedCostsBilled",
+    "WeeklyWagesBilled",
+    "MonthlyInterestAccrued",
+    "MachineWearUpdated",
+    "MachineBrokenDown",
+]
