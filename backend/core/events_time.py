@@ -3,6 +3,7 @@ from core.events import GameEvent
 
 @dataclass(frozen=True)
 class TimeAdvanced(GameEvent):
+    week: int = 0
     day: int = 0
     event_type: str = field(default="TimeAdvanced")
 

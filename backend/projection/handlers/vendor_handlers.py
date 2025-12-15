@@ -44,7 +44,7 @@ def handle_exclusive_contract_signed(state: AgentState, event: ExclusiveContract
         if vendor_rel is None:
             vendor_rel = VendorRelationship(
                 vendor_id=event.vendor_id,
-                tier=1,
+                tier=VendorTier.TIER_1,
                 weeks_at_tier=0,
                 payment_history=[],
                 is_exclusive_contract=True,
