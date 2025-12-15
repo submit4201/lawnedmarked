@@ -74,7 +74,7 @@ class ScandalMarker:
 class Alliance:
     """Represents a formal alliance with a competitor."""
     alliance_id: str
-    partner_id: str
+    partner_agent_id: str
     alliance_type: str  # "PRICE_FIXING", "MARKET_DIVISION", etc.
     duration_weeks: int
     penalties_on_breach: float  # Monetary penalty
@@ -106,10 +106,10 @@ class VendorRelationship:
 class StaffMember:
     """Represents an employee at a location."""
     staff_id: str
-    name: str
+    staff_name: str
     role: str  # "Manager", "Attendant", "Cleaner"
     hourly_rate: float
-    hire_week: int
+    hired_week: int
     benefits: List[str] = field(default_factory=list)  # ["Health Insurance", "Bonus"]
 
 
