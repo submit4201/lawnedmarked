@@ -28,12 +28,13 @@ def handle_social_score_adjusted(state: AgentState, event: SocialScoreAdjusted) 
 
 
 def handle_regulatory_status_updated(state: AgentState, event: RegulatoryStatusUpdated) -> AgentState:
-    """Update the regulatory status."""
+    """Update the regulatory status from event value to enum.
+    
+    The event.new_status must be a valid RegulatoryStatus enum value name.
+    If it's invalid, a ValueError will be raised (fail-fast principle).
+    """
     new_state = deepcopy(state)
-    try:
-        new_state.regulatory_status = RegulatoryStatus(event.new_status)
-    except Exception:
-        new_state.regulatory_status = event.new_status
+    new_state.regulatory_status = RegulatoryStatus(event.new_status)
     return new_state
 
 

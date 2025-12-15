@@ -67,28 +67,30 @@ def handle_vendor_terms_updated(state: AgentState, event: VendorTermsUpdated) ->
 
 
 def handle_vendor_tier_promoted(state: AgentState, event: VendorTierPromoted) -> AgentState:
-    """Upgrade vendor relationship tier across locations."""
+    """Upgrade vendor relationship tier across locations.
+    
+    The event.new_tier must be a valid VendorTier enum value.
+    If invalid, a ValueError is raised (fail-fast principle).
+    """
     new_state = deepcopy(state)
     for location in new_state.locations.values():
         vendor_rel = location.vendor_relationships.get(event.vendor_id)
         if vendor_rel:
-            try:
-                vendor_rel.tier = vendor_rel.tier.__class__(event.new_tier)
-            except Exception:
-                vendor_rel.tier = vendor_rel.tier
+            vendor_rel.tier = vendor_rel.tier.__class__(event.new_tier)
     return new_state
 
 
 def handle_vendor_tier_demoted(state: AgentState, event: VendorTierDemoted) -> AgentState:
-    """Downgrade vendor relationship tier across locations."""
+    """Downgrade vendor relationship tier across locations.
+    
+    The event.new_tier must be a valid VendorTier enum value.
+    If invalid, a ValueError is raised (fail-fast principle).
+    """
     new_state = deepcopy(state)
     for location in new_state.locations.values():
         vendor_rel = location.vendor_relationships.get(event.vendor_id)
         if vendor_rel:
-            try:
-                vendor_rel.tier = vendor_rel.tier.__class__(event.new_tier)
-            except Exception:
-                vendor_rel.tier = vendor_rel.tier
+            vendor_rel.tier = vendor_rel.tier.__class__(event.new_tier)
     return new_state
 
 
