@@ -19,7 +19,8 @@ from core.models import (
 )
 
 from core.events import GameEvent
-from core.commands import Command, CommandHandler, DomainException
+from core.commands import Command, DomainException
+from core.command_payloads import CommandPayload
 
 __all__ = [
     "AgentState",
@@ -37,6 +38,6 @@ __all__ = [
     "StaffMember",
     "GameEvent",
     "Command",
-    "CommandHandler",
     "DomainException",
+    "CommandPayload",
 ]

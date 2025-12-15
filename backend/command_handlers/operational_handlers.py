@@ -188,7 +188,8 @@ class PerformMaintenanceHandler(CommandHandler):
             location_id=location_id,
             machine_id=machine_id,
             maintenance_type=maintenance_type,
-            cost=cost,
+            maintenance_cost=cost,
+            new_condition=100.0,
         )
         
         funds_event = FundsTransferred(
