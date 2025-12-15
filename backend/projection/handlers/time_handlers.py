@@ -15,7 +15,7 @@ from core.events import (
 def handle_time_advanced(state: AgentState, event: TimeAdvanced) -> AgentState:
     """Update the week counter when time advances."""
     new_state = deepcopy(state)
-    new_state.current_week = event.week
+    new_state.current_day = event.day
     return new_state
 
 
