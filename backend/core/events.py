@@ -5,7 +5,7 @@ This file exposes the base `GameEvent` and re-exports domain events.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, List
 from datetime import datetime
 from abc import ABC
 
