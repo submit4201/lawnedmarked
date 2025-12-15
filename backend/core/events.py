@@ -31,7 +31,7 @@ class GameEvent(ABC):
             "timestamp": self.timestamp.isoformat(),
             "week": self.week
         }
-from .events_time import *
+from .events_time import TimeAdvanced, GameStarted  # TODO: Add all required symbols explicitly
 from .events_financial import *
 from .events_operational import *
 from .events_staffing import *
