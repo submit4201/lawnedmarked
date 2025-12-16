@@ -50,8 +50,22 @@ class ApplicationFactory:
         # Register all event projection handlers
         ApplicationFactory._register_event_handlers(event_registry)
         
-        # Create state builder
+        # Create state builder with default starting location
+        from core.models import LocationState
+
         initial_state = AgentState(agent_id="TEMPLATE")
+        # Add a default starting location with predictable ID
+        default_location = LocationState(
+            location_id="LOC_001",
+            zone="DOWNTOWN",
+            monthly_rent=2000.0,
+            current_cleanliness=85.0,
+            inventory_detergent=2000,
+            inventory_softener=1000,
+        )
+        initial_state.locations["LOC_001"] = default_location
+        initial_state.cash_balance = 10000.0  # Reset cash after location creation
+        
         state_builder = StateBuilder(event_registry, initial_state)
         
         # Create game engine

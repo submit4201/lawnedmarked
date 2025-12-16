@@ -56,7 +56,7 @@ def handle_set_price(state: AgentState, event: PriceSet) -> AgentState:
     # ✅ ONLY apply the fact mechanically
     if event.location_id in new_state.locations:
         location = new_state.locations[event.location_id]
-        location.active_pricing[event.service_type] = event.new_price
+        location.active_pricing[event.service_name] = event.new_price
     
     return new_state
 ```
@@ -80,7 +80,7 @@ def handle_price_set(state: AgentState, event: PriceSet) -> AgentState:
     
     if event.location_id in new_state.locations:
         location = new_state.locations[event.location_id]
-        location.active_pricing[event.service_type] = event.new_price
+        location.active_pricing[event.service_name] = event.new_price
     
     return new_state
 ```

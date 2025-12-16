@@ -39,7 +39,7 @@ Every event is an immutable fact:
 @dataclass(frozen=True)
 class PriceSet(GameEvent):
     location_id: str
-    service_type: str
+    service_name: str
     new_price: float
     event_type: str = "PriceSet"
 ```

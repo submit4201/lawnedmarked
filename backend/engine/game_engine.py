@@ -178,5 +178,10 @@ class GameEngine:
         """Get list of all registered event types."""
         return self.event_registry.get_registered_events()
 
+    def list_agents(self) -> List[str]:
+        """Return a list of agent_ids that have events in the repository."""
+        events = self.event_repository.load_all()
+        return sorted({e.agent_id for e in events if isinstance(e, GameEvent)})
+
 
 __all__ = ["GameEngine"]

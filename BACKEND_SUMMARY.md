@@ -140,7 +140,7 @@ success, events, msg = game_engine.execute_command(
         agent_id="PLAYER_001",
         payload={
             "location_id": "LOC_001",
-            "service_type": "StandardWash",
+            "service_name": "StandardWash",
             "new_price": 4.50,
         }
     )

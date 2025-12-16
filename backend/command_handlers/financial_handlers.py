@@ -43,12 +43,12 @@ class SetPriceHandler(CommandHandler):
         Payload expected:
         {
             "location_id": str,
-            "service_type": str,
+            "service_name": str,
             "new_price": float
         }
         """
         location_id = command.payload.get("location_id")
-        service_type = command.payload.get("service_type")
+        service_name = command.payload.get("service_name")
         new_price = command.payload.get("new_price")
         
         # Validation
@@ -66,7 +66,7 @@ class SetPriceHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             location_id=location_id,
-            service_type=service_type,
+            service_name=service_name,
             new_price=new_price,
         )
         

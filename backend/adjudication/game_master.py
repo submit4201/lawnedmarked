@@ -98,6 +98,27 @@ class GameMaster:
                 events.append(dilemma_event)
         
         return events
+
+    def prepare_gm_context(self, current_state: AgentState) -> list[dict]:
+        """Prepare an LLM prompt for the GM agent.
+
+        The GM must respond with either:
+        - Command(INJECT_WORLD_EVENT): {"source_role":"GM","event_type":"...","event_fields":{...}}
+        - or <|-ENDTURN-|>
+        """
+        # Keep it simple and LLM-friendly; the player LLM sees full state elsewhere.
+        location_ids = list(current_state.locations.keys()) if current_state.locations else []
+        prompt = (
+            "You are the GameMaster. Decide whether to inject ONE world/narrative event this tick.\n"
+            "Allowed event_type values: VendorPriceFluctuated, CustomerReviewSubmitted, DeliveryDisruption, "
+            "DilemmaTriggered, CompetitorPriceChanged, CompetitorExitedMarket.\n\n"
+            f"STATE: week={current_state.current_week} day={getattr(current_state, 'current_day', 0)} "
+            f"cash={current_state.cash_balance:.2f} social_score={current_state.social_score:.1f} locations={location_ids}\n\n"
+            "Respond with exactly one command in the format:\n"
+            "Command(INJECT_WORLD_EVENT): {\"source_role\":\"GM\",\"event_type\":\"VendorPriceFluctuated\",\"event_fields\":{...}}\n"
+            "or output <|-ENDTURN-|> if no event is needed."
+        )
+        return [{"role": "user", "content": prompt}]
     
     def _generate_customer_review(self, state: AgentState, location_id: str) -> GameEvent:
         """

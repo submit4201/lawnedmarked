@@ -140,6 +140,7 @@ class AgentState:
     """Tracks financial, social, and intangible assets tied to an agent."""
     agent_id: str
     current_week: int = 0
+    current_day: int = 0
     cash_balance: float = 10000.0  # Starting balance
     line_of_credit_balance: float = 0.0
     line_of_credit_limit: float = 5000.0
@@ -154,6 +155,9 @@ class AgentState:
     active_alliances: List[Alliance] = field(default_factory=list)
     pending_fines: List[Fine] = field(default_factory=list)
     locations: Dict[str, LocationState] = field(default_factory=dict)
+    private_notes: List[str] = field(default_factory=list)
+    audit_entries_count: int = 0
+    last_audit_event: str = ""
 
 
 @dataclass
