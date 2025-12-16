@@ -4,8 +4,10 @@ Defines base `Command` and re-exports domain command classes.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
-from abc import ABC
+from typing import Any, Dict, List
+from abc import ABC, abstractmethod
+from core.models import AgentState
+from core.events import GameEvent
 from .command_payloads import CommandPayload
 
 
@@ -16,6 +18,15 @@ class Command(ABC):
     agent_id: str = ""
     payload: Dict[str, Any] = field(default_factory=dict)
     payload_type: type[CommandPayload] | None = None
+
+
+class CommandHandler(ABC):
+    """Pure command handler interface."""
+
+    @abstractmethod
+    def handle(self, state: AgentState, command: Command) -> List[GameEvent]:
+        """Validate and process a command, returning generated events."""
+        raise NotImplementedError
 
 
 # ==================== Domain Exceptions ====================
@@ -113,6 +124,7 @@ from .commands_competition import (
 __all__ = [
     # Base
     "Command",
+    "CommandHandler",
     # Exceptions
     "DomainException",
     "InsufficientFundsError",

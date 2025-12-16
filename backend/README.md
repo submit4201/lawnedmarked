@@ -1,3 +1,6 @@
+# Backend
+
+## Running the Backend
 # Laundromat Tycoon - Event Sourcing Backend
 
 A comprehensive event-sourced backend for the Laundromat Tycoon simulation game, implementing the architectural principles and rules defined in `rules.md` and the state models from `state.md`.
@@ -139,10 +142,21 @@ action_registry.register("MY_COMMAND", new_handler)
 from application_factory import ApplicationFactory
 from core.commands import SetPriceCommand
 
-# Bootstrap the entire system
-game_engine, game_master, judge = ApplicationFactory.create_game_engine()
+Quick start:
+```bash
+# Install deps
+python -m pip install -r requirements.txt
 
-# Get initial state
+# Start API server (use python -m to avoid PATH issues)
+python -m uvicorn server:app --host 0.0.0.0 --port 9000
+
+# Health check
+curl http://localhost:9000/health
+```
+
+Notes:
+- If port 8000 is busy, prefer port 9000.
+- Endpoints: /game/turn/{agent_id}, /state/get/{agent_id}, /state/get_history/{agent_id}, /health.
 state = game_engine.get_current_state("PLAYER_001")
 
 # Execute a command
@@ -150,7 +164,7 @@ command = SetPriceCommand(
     agent_id="PLAYER_001",
     payload={
         "location_id": "LOC_001",
-        "service_type": "StandardWash",
+        "service_name": "StandardWash",
         "new_price": 4.50,
     }
 )

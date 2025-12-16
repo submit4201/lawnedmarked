@@ -14,8 +14,10 @@ __all__ = [
     "LoanTaken",
     "DebtPaymentProcessed",
     "FundsTransferred",
-    "MarketingInvested",
+    "MarketingBoostApplied",
     "TaxLiabilityCalculated",
+    "DefaultRecorded",
+    "TaxBracketAdjusted",
 ]
 
 @dataclass(frozen=True)
@@ -45,7 +47,7 @@ class DefaultRecorded(GameEvent):
 @dataclass(frozen=True)
 class PriceSet(GameEvent):
     location_id: str = ""
-    service_type: str = ""
+    service_name: str = ""
     new_price: float = 0.0
     event_type: str = field(default="PriceSet")
 

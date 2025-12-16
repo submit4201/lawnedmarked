@@ -16,6 +16,8 @@ from core.events import (
     CustomerReviewSubmitted,
     InvestigationStarted,
     InvestigationStageAdvanced,
+    EndOfTurnNotesSaved,
+    AuditSnapshotRecorded,
 )
 
 
@@ -116,6 +118,18 @@ def handle_investigation_stage_advanced(state: AgentState, event: InvestigationS
     """Placeholder handler for investigation stage progression."""
     return deepcopy(state)
 
+def handle_end_of_turn_notes_saved(state: AgentState, event: EndOfTurnNotesSaved) -> AgentState:
+    new_state = deepcopy(state)
+    if event.notes:
+        new_state.private_notes.append(event.notes)
+    return new_state
+
+def handle_audit_snapshot_recorded(state: AgentState, event: AuditSnapshotRecorded) -> AgentState:
+    new_state = deepcopy(state)
+    new_state.audit_entries_count = event.entries_count
+    new_state.last_audit_event = event.last_event_type
+    return new_state
+
 
 SOCIAL_REGULATORY_EVENT_HANDLERS = {
     "SocialScoreAdjusted": handle_social_score_adjusted,
@@ -129,6 +143,8 @@ SOCIAL_REGULATORY_EVENT_HANDLERS = {
     "CustomerReviewSubmitted": handle_customer_review_submitted,
     "InvestigationStarted": handle_investigation_started,
     "InvestigationStageAdvanced": handle_investigation_stage_advanced,
+    "EndOfTurnNotesSaved": handle_end_of_turn_notes_saved,
+    "AuditSnapshotRecorded": handle_audit_snapshot_recorded,
 }
 
 __all__ = [
@@ -144,4 +160,6 @@ __all__ = [
     "handle_customer_review_submitted",
     "handle_investigation_started",
     "handle_investigation_stage_advanced",
+    "handle_end_of_turn_notes_saved",
+    "handle_audit_snapshot_recorded",
 ]

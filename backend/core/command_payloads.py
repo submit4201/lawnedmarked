@@ -6,10 +6,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Literal
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class CommandPayload:
-    """Base class for all command payloads."""
-    location_id: str = "default_location"
+    """Base class for all command payloads.
+
+    kw_only ensures base defaults don't conflict with required subclass fields.
+    """
+    location_id: str | None = None
 
 
 # --- I. Financial & Debt Management Commands ---
@@ -78,6 +81,7 @@ class BuySuppliesPayload(CommandPayload):
 class OpenNewLocationPayload(CommandPayload):
     zone: str
     monthly_rent: float
+    setup_cost: float
 
 
 @dataclass(frozen=True)
@@ -211,6 +215,22 @@ class CommunicateToAgentPayload(CommandPayload):
     recipient_agent_id: str
     message_content: str
     channel: Literal["DIRECT", "PUBLIC", "PROPOSAL"]
+
+
+# --- VII. Adjudication / God Tool Commands ---
+
+
+@dataclass(frozen=True)
+class InjectWorldEventPayload(CommandPayload):
+    """Inject a single event into the world.
+
+    Used only by GM/Judge agents. The handler will validate the event_type is allowed
+    and will construct the corresponding immutable GameEvent instance.
+    """
+
+    source_role: Literal["GM", "JUDGE"]
+    event_type: str
+    event_fields: Dict[str, Any] = field(default_factory=dict)
 
 
 __all__ = [

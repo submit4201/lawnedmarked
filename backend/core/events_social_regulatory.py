@@ -76,6 +76,17 @@ class LoyaltyMemberRegistered(GameEvent):
     program_year: int = 0
     event_type: str = field(default="LoyaltyMemberRegistered")
 
+@dataclass(frozen=True)
+class EndOfTurnNotesSaved(GameEvent):
+    notes: str = ""
+    event_type: str = field(default="EndOfTurnNotesSaved")
+
+@dataclass(frozen=True)
+class AuditSnapshotRecorded(GameEvent):
+    entries_count: int = 0
+    last_event_type: str = ""
+    event_type: str = field(default="AuditSnapshotRecorded")
+
 
 __all__ = [
     "SocialScoreAdjusted",
@@ -89,4 +100,6 @@ __all__ = [
     "InvestigationStageAdvanced",
     "CustomerReviewSubmitted",
     "LoyaltyMemberRegistered",
+    "EndOfTurnNotesSaved",
+    "AuditSnapshotRecorded",
 ]

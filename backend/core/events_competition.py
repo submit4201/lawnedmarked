@@ -28,7 +28,7 @@ class AgentAcquired(GameEvent):
 class CompetitorPriceChanged(GameEvent):
     competitor_id: str = ""
     location_id: str = ""
-    service_type: str = ""
+    service_name: str = ""
     new_price: float = 0.0
     event_type: str = field(default="CompetitorPriceChanged")
 
