@@ -109,7 +109,13 @@ if _LLM_AVAILABLE:
         _provider = mock.MockLLM()
         _provider_info = "MockLLM (fallback)"
         print(f"[LLM] Falling back to MockLLM: {exc}")
-    _dispatcher = LLMDispatcher(provider=_provider, tool_executor=_tool_executor, audit_log=_audit_log, session_store=_session_store)
+    _dispatcher = LLMDispatcher(
+        provider=_provider,
+        tool_executor=_tool_executor,
+        audit_log=_audit_log,
+        session_store=_session_store,
+        command_executor=lambda agent_id, command: engine.execute_command(agent_id, command),
+    )
 
 app = FastAPI(title="Laundromat Tycoon API", version="0.1.0")
 
@@ -226,9 +232,37 @@ def _run_simulation_tick(agent_id: str) -> List[Any]:
     return [*time_events, *generated]
 
 
-@app.post("/game/turn/{agent_id}", response_model=CommandResponse)
-async def submit_command(agent_id: str, cmd: CommandRequest):
-    """Main action endpoint. Maps LLM/human command_name+payload to a Command and executes it."""
+@app.post("/game/turn/{agent_id}")
+async def submit_command(agent_id: str, cmd: CommandRequest | None = None):
+    """Primary endpoint.
+
+    - If cmd is provided (command_name+payload), executes that command.
+    - If cmd is omitted, runs an LLM-driven player turn and returns emitted events + thoughts.
+    """
+    if cmd is None or not cmd.command_name:
+        if not _LLM_AVAILABLE or _dispatcher is None:
+            raise HTTPException(status_code=400, detail="LLM dispatcher unavailable")
+
+        # Run deterministic time progression and autonomous simulation before the player's action.
+        _run_simulation_tick(agent_id)
+
+        # Build a simple context user message (the dispatcher also injects full state/history tool context).
+        state = engine.get_current_state(agent_id)
+        location_ids = list(state.locations.keys()) if state.locations else []
+        context_msg = f"CURRENT GAME STATE (Week {state.current_week}, Day {getattr(state, 'current_day', 0)}): Cash=${state.cash_balance:.2f}; Locations={location_ids}"
+        history_messages: List[Dict[str, Any]] = [{"role": "user", "content": context_msg}]
+
+        try:
+            result = await _dispatcher.run_player_turn(agent_id, history_messages)
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"LLM Provider Error: {str(e)}")
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result.get("error"))
+
+        return _to_serializable(result)
+
+    # Direct command submission path
     try:
         command: Command = LLMCommandFactory.from_llm(agent_id=agent_id, command_name=cmd.command_name, **(cmd.payload or {}))
     except Exception as exc:  # noqa: BLE001
@@ -324,53 +358,21 @@ What action do you want to take this turn? Respond with Command(NAME): {{payload
     try:
         result = await _dispatcher.run_player_turn(agent_id, history_messages)
     except Exception as e:
-        # Catch provider errors (like LM Studio crashing)
-        raise HTTPException(status_code=503, detail=f"LLM Provider Error: {str(e)}. Please check LM Studio.")
+        raise HTTPException(status_code=503, detail=f"LLM Provider Error: {str(e)}. Please check your local provider.")
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result.get("error"))
 
-    # If the model used tool-calling to execute a transactional command, don't execute again.
-    if result.get("execution"):
-        exec_result = result["execution"]
-        success = bool(exec_result.get("success", False))
-        events_emitted = int(exec_result.get("events_emitted", 0))
-        message = str(exec_result.get("message", ""))
-        if not success:
-            raise HTTPException(status_code=400, detail=message)
-        # Audit snapshot for LLM turns
-        if _LLM_AVAILABLE and _audit_log:
-            from core.events_social_regulatory import AuditSnapshotRecorded
-            from datetime import datetime as _dt
-
-            entries = _audit_log.list()
-            events_count = len(entries)
-            last_type = entries[-1].get("type") if entries else ""
-            snapshot = AuditSnapshotRecorded(
-                event_id=f"AUDIT_{agent_id}_{events_count}",
-                agent_id=agent_id,
-                timestamp=_dt.now(),
-                week=engine.get_current_state(agent_id).current_week,
-                entries_count=events_count,
-                last_event_type=last_type,
-            )
-            engine.event_repository.save(snapshot)
-
-        return LLMCommandResponse(success=True, events_emitted=events_emitted, message=message, notes_saved=False)
-
-    command: Command = result.get("command")
+    events = result.get("events") or []
     notes = result.get("notes")
-
-    success, events, message = engine.execute_command(agent_id, command)
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
 
     notes_saved = False
     if notes:
         from core.events_social_regulatory import EndOfTurnNotesSaved
         from datetime import datetime as _dt
+
         note_evt = EndOfTurnNotesSaved(
-            event_id=f"NOTES_{agent_id}_{len(notes)}_{int(_dt.now().timestamp())}",
+            event_id=f"NOTES_{agent_id}_{len(str(notes))}_{int(_dt.now().timestamp())}",
             agent_id=agent_id,
             timestamp=_dt.now(),
             week=engine.get_current_state(agent_id).current_week,
@@ -382,6 +384,7 @@ What action do you want to take this turn? Respond with Command(NAME): {{payload
     if _LLM_AVAILABLE and _audit_log:
         from core.events_social_regulatory import AuditSnapshotRecorded
         from datetime import datetime as _dt
+
         entries = _audit_log.list()
         events_count = len(entries)
         last_type = entries[-1].get("type") if entries else ""
@@ -395,7 +398,12 @@ What action do you want to take this turn? Respond with Command(NAME): {{payload
         )
         engine.event_repository.save(snapshot)
 
-    return LLMCommandResponse(success=True, events_emitted=len(events), message=message, notes_saved=notes_saved)
+    return LLMCommandResponse(
+        success=True,
+        events_emitted=len(events),
+        message="LLM turn completed",
+        notes_saved=notes_saved,
+    )
 
 
 @app.get("/health")

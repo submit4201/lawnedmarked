@@ -84,6 +84,28 @@ class Judge:
             events.append(status_event)
         
         return events
+
+    def prepare_judge_context(self, current_state: AgentState, recent_events: List[GameEvent]) -> list[dict]:
+        """Prepare an LLM prompt for the Judge agent.
+
+        The Judge must respond with either:
+        - Command(INJECT_WORLD_EVENT): {"source_role":"JUDGE","event_type":"...","event_fields":{...}}
+        - or <|-ENDTURN-|>
+        """
+        recent_types = [e.event_type for e in (recent_events or [])][-10:]
+        prompt = (
+            "You are the Judge. Review recent events and decide whether to inject ONE consequence event.\n"
+            "Allowed event_type values: ScandalStarted, RegulatoryFinding, RegulatoryStatusUpdated, "
+            "InvestigationStarted, InvestigationStageAdvanced.\n\n"
+            f"STATE: week={current_state.current_week} day={getattr(current_state, 'current_day', 0)} "
+            f"cash={current_state.cash_balance:.2f} debt={current_state.total_debt_owed:.2f} "
+            f"social_score={current_state.social_score:.1f} pending_fines={len(current_state.pending_fines)} active_scandals={len(current_state.active_scandals)}\n"
+            f"RECENT_EVENT_TYPES: {recent_types}\n\n"
+            "Respond with exactly one command in the format:\n"
+            "Command(INJECT_WORLD_EVENT): {\"source_role\":\"JUDGE\",\"event_type\":\"RegulatoryFinding\",\"event_fields\":{...}}\n"
+            "or output <|-ENDTURN-|> if no consequence is needed."
+        )
+        return [{"role": "user", "content": prompt}]
     
     def _check_predatory_pricing(self, state: AgentState, event: GameEvent) -> List[GameEvent]:
         """

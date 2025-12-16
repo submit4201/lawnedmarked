@@ -35,6 +35,7 @@ from core.commands import (
     EnterAllianceCommand,
     ProposeBuyoutCommand,
     AcceptBuyoutOfferCommand,
+    InjectWorldEventCommand,
 )
 
 # Commands that are user-facing in the LLM
@@ -65,6 +66,7 @@ _COMMAND_CLASSES = [
     EnterAllianceCommand,
     ProposeBuyoutCommand,
     AcceptBuyoutOfferCommand,
+    InjectWorldEventCommand,
 ]
 
 

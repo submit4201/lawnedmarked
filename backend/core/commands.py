@@ -120,6 +120,10 @@ from .commands_competition import (
     AcceptBuyoutOfferCommand,
 )
 
+from .commands_adjudication import (
+    InjectWorldEventCommand,
+)
+
 
 __all__ = [
     # Base
@@ -168,4 +172,6 @@ __all__ = [
     "EnterAllianceCommand",
     "ProposeBuyoutCommand",
     "AcceptBuyoutOfferCommand",
+    # Adjudication
+    "InjectWorldEventCommand",
 ]

@@ -1,11 +1,78 @@
-"""
-Main entry point for the Laundromat Tycoon backend.
-Demonstrates basic usage of the game engine.
+"""Main entry point for the Laundromat Tycoon backend.
+
+This file is the orchestrator for the full Phase 4 loop when desired:
+TimeAdvanced → GM injection → autonomous tick → Judge injection → player LLM.
+
+The existing demo remains intact; the LLM orchestration helpers are added
+as standalone functions.
 """
 
 from application_factory import ApplicationFactory
 from core.commands import SetPriceCommand, TakeLoanCommand, MakeDebtPaymentCommand
 from core.models import LocationState
+
+
+def _normalize(name: str) -> str:
+    return str(name or "").replace(" ", "_").replace("-", "_").upper()
+
+
+async def run_gm_turn(agent_id: str, current_state, game_master, dispatcher, game_engine) -> list:
+    """Run the GM LLM and execute its injected world event (or do nothing).
+
+    Expected GM output:
+    - Command(INJECT_WORLD_EVENT): {"source_role":"GM","event_type":"...","event_fields":{...}}
+    - or <|-ENDTURN-|>
+    """
+    from llm.prompts import extract_command_from_text
+    from llm_factory import LLMCommandFactory
+
+    history_messages = game_master.prepare_gm_context(current_state)
+    result = await dispatcher.run_gm_turn(agent_id, history_messages)
+    content = (result or {}).get("content", "") or ""
+
+    if "<|-ENDTURN-|>" in content:
+        return []
+
+    extraction = extract_command_from_text(content)
+    if _normalize(extraction.command_name) != "INJECT_WORLD_EVENT":
+        raise ValueError("GM must output INJECT_WORLD_EVENT or <|-ENDTURN-|>")
+
+    command = LLMCommandFactory.from_llm(
+        agent_id=agent_id,
+        command_name=extraction.command_name,
+        payload_json=extraction.payload_json,
+    )
+    success, events, message = game_engine.execute_command(agent_id, command)
+    if not success:
+        raise RuntimeError(f"GM inject failed: {message}")
+    return events
+
+
+async def run_judge_turn(agent_id: str, current_state, recent_events, judge, dispatcher, game_engine) -> list:
+    """Run the Judge LLM and execute its injected consequence event (or do nothing)."""
+    from llm.prompts import extract_command_from_text
+    from llm_factory import LLMCommandFactory
+
+    history_messages = judge.prepare_judge_context(current_state, recent_events)
+    result = await dispatcher.run_judge_turn(agent_id, history_messages)
+    content = (result or {}).get("content", "") or ""
+
+    if "<|-ENDTURN-|>" in content:
+        return []
+
+    extraction = extract_command_from_text(content)
+    if _normalize(extraction.command_name) != "INJECT_WORLD_EVENT":
+        raise ValueError("Judge must output INJECT_WORLD_EVENT or <|-ENDTURN-|>")
+
+    command = LLMCommandFactory.from_llm(
+        agent_id=agent_id,
+        command_name=extraction.command_name,
+        payload_json=extraction.payload_json,
+    )
+    success, events, message = game_engine.execute_command(agent_id, command)
+    if not success:
+        raise RuntimeError(f"Judge inject failed: {message}")
+    return events
 
 
 def main():

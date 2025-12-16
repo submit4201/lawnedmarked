@@ -262,4 +262,5 @@ __all__ = [
     "ProposeBuyoutPayload",
     "AcceptBuyoutOfferPayload",
     "CommunicateToAgentPayload",
+    "InjectWorldEventPayload",
 ]
