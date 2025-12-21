@@ -43,15 +43,6 @@ class AzureAIProjectsProvider(LLMProviderBase):
         )
 
         self._openai_client = self._client.get_openai_client()
-        def get_token(self):
-            return self._openai_client.get_token()
-        # create the chat message
-        def _chat(self, messages: list[dict]):
-            response = self._openai_client.responses.create(
-                input=payload_messages,
-                extra_body={"agent": {"name": self._agent.name, "type": "agent_reference"}},
-            )
-            return response
             
     def _create_agent(self, tools: Optional[list[dict]] = None):
         azure_tools = []
