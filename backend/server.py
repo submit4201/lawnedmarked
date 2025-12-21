@@ -234,6 +234,7 @@ def _print_tick_summary(result: dict):
                     f"events(time={len(time_events)}, auto={len(autonomous_events)})" + (f" errors={errs}" if errs else "")
                 )
     except Exception:
+        # Logging failures should not prevent the response from being returned
         pass
 
 
