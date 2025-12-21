@@ -49,8 +49,23 @@ class StockoutEnded(GameEvent):
 class NewLocationOpened(GameEvent):
     location_id: str = ""
     zone: str = ""
+    monthly_rent: float = 0.0
     initial_investment: float = 0.0
     event_type: str = field(default="NewLocationOpened")
+
+@dataclass(frozen=True)
+class LocationListingAdded(GameEvent):
+    listing_id: str = ""
+    zone: str = ""
+    monthly_rent: float = 0.0
+    setup_cost: float = 0.0
+    description: str = ""
+    event_type: str = field(default="LocationListingAdded")
+
+@dataclass(frozen=True)
+class LocationListingRemoved(GameEvent):
+    listing_id: str = ""
+    event_type: str = field(default="LocationListingRemoved")
 
 @dataclass(frozen=True)
 class MachineStatusChanged(GameEvent):
@@ -69,5 +84,7 @@ __all__ = [
     "StockoutStarted",
     "StockoutEnded",
     "NewLocationOpened",
+    "LocationListingAdded",
+    "LocationListingRemoved",
     "MachineStatusChanged",
 ]

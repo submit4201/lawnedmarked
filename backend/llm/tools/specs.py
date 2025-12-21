@@ -16,7 +16,28 @@ GET_STATE = ToolSchema(
 GET_HISTORY = ToolSchema(
     name="get_history",
     description="Get event history for agent",
-    schema={"type": "object", "properties": {"agent_id": {"type": "string"}, "last_event_id": {"type": "string"}}, "required": ["agent_id"]},
+    schema={
+        "type": "object",
+        "properties": {
+            "agent_id": {"type": "string"},
+            "last_event_id": {"type": "string"},
+            "limit": {"type": "integer"},
+        },
+        "required": ["agent_id"],
+    },
+)
+
+GET_INVENTORY = ToolSchema(
+    name="get_inventory",
+    description="Get current inventory levels for a location",
+    schema={
+        "type": "object",
+        "properties": {
+            "agent_id": {"type": "string"},
+            "location_id": {"type": "string"},
+        },
+        "required": ["agent_id", "location_id"],
+    },
 )
 
 SUBMIT_COMMAND = ToolSchema(

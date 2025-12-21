@@ -45,8 +45,14 @@ def handle_wage_adjusted(state: AgentState, event: WageAdjusted) -> AgentState:
 
 
 def handle_benefit_implemented(state: AgentState, event: BenefitImplemented) -> AgentState:
-    """Record benefit implementation (cost tracked via FundsTransferred)."""
-    return deepcopy(state)
+    """Record benefit implementation and apply to all staff at the location."""
+    new_state = deepcopy(state)
+    if event.location_id in new_state.locations:
+        location = new_state.locations[event.location_id]
+        for staff in location.current_staff:
+            if event.benefit_type not in staff.benefits:
+                staff.benefits.append(event.benefit_type)
+    return new_state
 
 
 def handle_staff_quit(state: AgentState, event: StaffQuit) -> AgentState:

@@ -10,6 +10,7 @@ from infrastructure.event_repository import (
 
 from infrastructure.action_registry import ActionRegistry
 from infrastructure.event_registry import EventRegistry, ProjectionHandler
+from infrastructure.serialization import to_serializable, _to_serializable
 
 __all__ = [
     "EventRepository",
@@ -18,4 +19,7 @@ __all__ = [
     "ActionRegistry",
     "EventRegistry",
     "ProjectionHandler",
+    "to_serializable",
+    "_to_serializable",
 ]
+

@@ -77,6 +77,13 @@ class LoyaltyMemberRegistered(GameEvent):
     event_type: str = field(default="LoyaltyMemberRegistered")
 
 @dataclass(frozen=True)
+class CommunicationSent(GameEvent):
+    target_agent_id: str = ""
+    message: str = ""
+    channel: str = "DIRECT"  # DIRECT, PUBLIC, ANONYMOUS
+    event_type: str = field(default="CommunicationSent")
+
+@dataclass(frozen=True)
 class EndOfTurnNotesSaved(GameEvent):
     notes: str = ""
     event_type: str = field(default="EndOfTurnNotesSaved")
@@ -100,6 +107,7 @@ __all__ = [
     "InvestigationStageAdvanced",
     "CustomerReviewSubmitted",
     "LoyaltyMemberRegistered",
+    "CommunicationSent",
     "EndOfTurnNotesSaved",
     "AuditSnapshotRecorded",
 ]

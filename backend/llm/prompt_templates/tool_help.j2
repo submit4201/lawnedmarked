@@ -1,0 +1,72 @@
+################################################################
+# ############################################################ # 
+# #                       Tools                              # #
+# ############################################################ #                
+
+A. Informational & Session Tools
+
+| Type | Name | Description |
+| TOOL | tool_help | List categories or show detailed schema for a specific tool. |
+| TOOL | get_history | Get recent event history for an agent. |
+| TOOL | end_of_turn | End your turn and save private notes for next time. |
+
+B. Financial & Pricing Commands/Events
+
+These cover player control over money, debt, pricing, and marketing.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | SetPrice | Player | Sets price for a specific service (Wash, Dry, Vending, Premium). |
+| COMMAND | TakeLoan | Player | Requests a loan or draws on LOC (2.3.4). |
+| COMMAND | MakeDebtPayment | Player | Pays down debt principal and interest. |
+| COMMAND | InvestInMarketing | Player | Spends cash on a marketing campaign (2.3.2). |
+
+C. Operational & Equipment Commands/Events
+
+These cover physical asset management and maintenance.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | BuyEquipment | Player | Purchases machine (Washer, Dryer, Vending). |
+| COMMAND | SellEquipment | Player | Sells used equipment (e.g., to Budget Laundry Outlet). |
+| COMMAND | PerformMaintenance | Player | Schedules Routine, Deep, or Overhaul service (1.2.3). |
+| COMMAND | BuySupplies | Player | Orders bulk detergent or other consumables. |
+| COMMAND | OpenNewLocation | Player | Initiates the process to open a new laundromat. (NEW) |
+| COMMAND | FixMachine | Player | Requests emergency repair/unbreaking of a machine. (NEW) |
+
+D. Staffing & HR Commands/Events
+
+These cover employee management and labor costs.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | HireStaff | Player | Hires employee for a specific role (2.3.2). |
+| COMMAND | FireStaff | Player | Terminates an employee. |
+| COMMAND | AdjustStaffWage | Player | Changes an employee's hourly rate. |
+| COMMAND | ProvideBenefits | Player | Implements a new staff benefit (2.2.2). |
+
+E. Social
+These cover LLM evaluation pillars, scandals, and compliance.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | InitiateCharity | Player | Spends money on community/social projects (2.2.2). |
+| COMMAND | FileAppeal | Player | Appeals a fine or finding from the Judge (2.5). |
+| COMMAND | LaunchPRCampaign | Player | Starts a public relations campaign (2.2.2). |
+| COMMAND | AddressScandal | Player | Manages fallout from a scandal (2.5). |
+| COMMAND | MessageSend | Player | Sends a message to another agent (2.6). |
+| COMMAND | MessageReceive | Player | Receives a message from another agent (2.6). |
+
+F. Vendor Relationship Commands/Events (GM/Judge Domain)
+
+These cover the dynamic interactions with suppliers.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | NegotiateVendorDeal | Player | Initiates negotiation for custom terms (2.3.2). |
+| COMMAND | SignExclusiveContract | Player | Locks in a vendor for specific terms (2.3.2). |
+| COMMAND | CancelVendorContract | Player | Terminates an existing exclusive contract (with penalty). (NEW) |
+
+G. Competition & Acquisition Commands/Events
+
+These cover alliances, buyouts, and high-level competitive moves.
+
+| Type | Name | Source/Target | Description |
+| COMMAND | EnterAlliance | Player | Proposes a formal or informal alliance (2.6). |
+| COMMAND | ProposeBuyout | Player | Offers to acquire a competitor (2.6). |
+| COMMAND | AcceptBuyoutOffer | Player | Target agent accepts an acquisition offer. |

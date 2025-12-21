@@ -28,18 +28,34 @@ def handle_alliance_formed(state: AgentState, event: AllianceFormed) -> AgentSta
 
 
 def handle_agent_acquired(state: AgentState, event: AgentAcquired) -> AgentState:
-    """Placeholder handler for acquisitions (no direct state change)."""
-    return deepcopy(state)
+    """Transfer assets from acquired agent to the player."""
+    new_state = deepcopy(state)
+    # assets_transferred is expected to contain a 'locations' dict
+    locations_data = event.assets_transferred.get("locations", {})
+    for loc_id, loc_state in locations_data.items():
+        if loc_id not in new_state.locations:
+            new_state.locations[loc_id] = loc_state
+    return new_state
 
 
 def handle_competitor_price_changed(state: AgentState, event: CompetitorPriceChanged) -> AgentState:
-    """Placeholder handler for competitor price changes."""
-    return deepcopy(state)
+    """Update known competitor prices at a location."""
+    new_state = deepcopy(state)
+    if event.location_id in new_state.locations:
+        location = new_state.locations[event.location_id]
+        if event.competitor_id not in location.competitor_prices:
+            location.competitor_prices[event.competitor_id] = {}
+        location.competitor_prices[event.competitor_id][event.service_name] = event.new_price
+    return new_state
 
 
 def handle_competitor_exited_market(state: AgentState, event: CompetitorExitedMarket) -> AgentState:
-    """Placeholder handler for competitor exit events."""
-    return deepcopy(state)
+    """Remove competitor from all known price lists."""
+    new_state = deepcopy(state)
+    for location in new_state.locations.values():
+        if event.competitor_id in location.competitor_prices:
+            del location.competitor_prices[event.competitor_id]
+    return new_state
 
 
 def handle_communication_intercepted(state: AgentState, event: CommunicationIntercepted) -> AgentState:

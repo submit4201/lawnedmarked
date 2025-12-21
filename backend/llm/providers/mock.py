@@ -1,13 +1,26 @@
-from dataclasses import dataclass
-from typing import List, Dict, Any
+from __future__ import annotations
 
-@dataclass
-class MockLLM:
-    name: str = "mock-llm"
+from typing import Any, Dict, List, Optional
 
-    async def chat(self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] | None = None) -> Dict[str, Any]:
-        # Deterministic output: propose a SetPrice command
+from .llmproviderbase import LLMProviderBase, LLMProviderConfigBase
+
+
+class MockLLM(LLMProviderBase):
+    def __init__(self):
+        super().__init__(LLMProviderConfigBase(name="mock"))
+
+    async def chat(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        step_idx: Optional[int] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        # Deterministic output: propose a SetPrice command.
+        # Useful as a safe fallback when real providers are misconfigured.
         return {
             "role": "assistant",
-            "content": "Command(SetPrice): {\"location_id\": \"LOC_001\", \"service_name\": \"StandardWash\", \"new_price\": 4.25}"
+            "content": "Command(SetPrice): {\"location_id\": \"LOC_001\", \"service_name\": \"StandardWash\", \"new_price\": 4.25}",
+            "tool_calls": None,
         }

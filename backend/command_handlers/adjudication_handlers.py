@@ -55,6 +55,8 @@ _GM_ALLOWED = {
     "DilemmaTriggered",
     "CompetitorPriceChanged",
     "CompetitorExitedMarket",
+    "VendorNegotiationResult",
+    "VendorTermsUpdated",
 }
 
 _JUDGE_ALLOWED = {
@@ -70,10 +72,10 @@ class InjectWorldEventHandler(CommandHandler):
     """Validate and inject a single allowed event type."""
 
     def handle(self, state: AgentState, command: Command) -> List[GameEvent]:
-        payload = command.payload or {}
-        source_role = str(payload.get("source_role", "")).upper()
-        event_type = str(payload.get("event_type", "")).strip()
-        event_fields: Dict[str, Any] = payload.get("event_fields") or {}
+        # ! Use getattr for typed payloads
+        source_role = str(getattr(command.payload, "source_role", "")).upper()
+        event_type = str(getattr(command.payload, "event_type", "")).strip()
+        event_fields: Dict[str, Any] = getattr(command.payload, "event_fields", {}) or {}
 
         if source_role not in {"GM", "JUDGE"}:
             raise InvalidStateError("source_role must be 'GM' or 'JUDGE'")

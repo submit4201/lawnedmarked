@@ -16,6 +16,7 @@ from core.events import (
     CustomerReviewSubmitted,
     InvestigationStarted,
     InvestigationStageAdvanced,
+    CommunicationSent,
     EndOfTurnNotesSaved,
     AuditSnapshotRecorded,
 )
@@ -82,13 +83,22 @@ def handle_regulatory_finding(state: AgentState, event: RegulatoryFinding) -> Ag
 
 
 def handle_dilemma_resolved(state: AgentState, event: DilemmaResolved) -> AgentState:
-    """Record the player's ethical dilemma choice (mechanical no-op)."""
-    return deepcopy(state)
+    """Remove the resolved dilemma from active dilemmas."""
+    new_state = deepcopy(state)
+    if event.dilemma_id in new_state.active_dilemmas:
+        del new_state.active_dilemmas[event.dilemma_id]
+    return new_state
 
 
 def handle_dilemma_triggered(state: AgentState, event: DilemmaTriggered) -> AgentState:
-    """Placeholder for dilemma presentation (no state change)."""
-    return deepcopy(state)
+    """Add the dilemma to active dilemmas for the player to see."""
+    new_state = deepcopy(state)
+    new_state.active_dilemmas[event.dilemma_id] = {
+        "description": event.description,
+        "options": event.options,
+        "triggered_week": state.current_week
+    }
+    return new_state
 
 
 def handle_loyalty_member_registered(state: AgentState, event: LoyaltyMemberRegistered) -> AgentState:
@@ -108,15 +118,24 @@ def handle_customer_review_submitted(state: AgentState, event: CustomerReviewSub
 
 
 def handle_investigation_started(state: AgentState, event: InvestigationStarted) -> AgentState:
-    """Set regulatory status to investigation when an inquiry starts."""
+    """Record the start of a regulatory investigation and update status."""
     new_state = deepcopy(state)
     new_state.regulatory_status = RegulatoryStatus.INVESTIGATION
+    new_state.active_investigations[event.investigation_id] = {
+        "reason": event.reason,
+        "severity": event.severity,
+        "current_stage": "INITIAL",
+        "started_week": state.current_week
+    }
     return new_state
 
 
 def handle_investigation_stage_advanced(state: AgentState, event: InvestigationStageAdvanced) -> AgentState:
-    """Placeholder handler for investigation stage progression."""
-    return deepcopy(state)
+    """Update the stage of an active investigation."""
+    new_state = deepcopy(state)
+    if event.investigation_id in new_state.active_investigations:
+        new_state.active_investigations[event.investigation_id]["current_stage"] = event.current_stage
+    return new_state
 
 def handle_end_of_turn_notes_saved(state: AgentState, event: EndOfTurnNotesSaved) -> AgentState:
     new_state = deepcopy(state)
@@ -128,6 +147,14 @@ def handle_audit_snapshot_recorded(state: AgentState, event: AuditSnapshotRecord
     new_state = deepcopy(state)
     new_state.audit_entries_count = event.entries_count
     new_state.last_audit_event = event.last_event_type
+    return new_state
+
+
+def handle_communication_sent(state: AgentState, event: CommunicationSent) -> AgentState:
+    """Record communication in state (optional, for history)."""
+    new_state = deepcopy(state)
+    # We could add a communication_history list to AgentState if needed
+    # For now, we just return the state as the event is the record
     return new_state
 
 
@@ -143,6 +170,7 @@ SOCIAL_REGULATORY_EVENT_HANDLERS = {
     "CustomerReviewSubmitted": handle_customer_review_submitted,
     "InvestigationStarted": handle_investigation_started,
     "InvestigationStageAdvanced": handle_investigation_stage_advanced,
+    "CommunicationSent": handle_communication_sent,
     "EndOfTurnNotesSaved": handle_end_of_turn_notes_saved,
     "AuditSnapshotRecorded": handle_audit_snapshot_recorded,
 }
@@ -160,6 +188,7 @@ __all__ = [
     "handle_customer_review_submitted",
     "handle_investigation_started",
     "handle_investigation_stage_advanced",
+    "handle_communication_sent",
     "handle_end_of_turn_notes_saved",
     "handle_audit_snapshot_recorded",
 ]

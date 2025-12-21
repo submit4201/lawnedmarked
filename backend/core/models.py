@@ -100,6 +100,18 @@ class VendorRelationship:
     payment_history: List[PaymentHistoryType] = field(default_factory=list)
     is_exclusive_contract: bool = False
     exclusive_contract_end_week: Optional[int] = None
+    current_price_per_unit: float = 1.0  # Baseline price
+    is_disrupted: bool = False  # Delivery disruption status
+
+
+@dataclass
+class LocationListing:
+    """Represents a location available for purchase/lease."""
+    listing_id: str
+    zone: str
+    monthly_rent: float
+    setup_cost: float
+    description: str = ""
 
 
 @dataclass
@@ -130,6 +142,7 @@ class LocationState:
         "Dry": 2.00,
         "VendingItems": 1.50
     })
+    competitor_prices: Dict[str, Dict[str, float]] = field(default_factory=dict)  # competitor_id -> {service -> price}
     vendor_relationships: Dict[str, VendorRelationship] = field(default_factory=dict)
     accumulated_revenue_week: float = 0.0
     accumulated_cogs_week: float = 0.0
@@ -147,14 +160,17 @@ class AgentState:
     total_debt_owed: float = 0.0
     social_score: float = 50.0  # 0.0 - 100.0
     active_scandals: List[ScandalMarker] = field(default_factory=list)
+    active_dilemmas: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # dilemma_id -> data
     customer_loyalty_members: int = 0
     market_share_loads: float = 0.0  # Weekly loads processed
     current_tax_liability: float = 0.0
     regulatory_status: RegulatoryStatus = RegulatoryStatus.NORMAL
+    active_investigations: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # investigation_id -> data
     credit_rating: int = 50  # 1 - 100
     active_alliances: List[Alliance] = field(default_factory=list)
     pending_fines: List[Fine] = field(default_factory=list)
     locations: Dict[str, LocationState] = field(default_factory=dict)
+    available_listings: Dict[str, LocationListing] = field(default_factory=dict)
     private_notes: List[str] = field(default_factory=list)
     audit_entries_count: int = 0
     last_audit_event: str = ""

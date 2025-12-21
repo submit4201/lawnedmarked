@@ -11,6 +11,8 @@ from core.events import (
     EquipmentRepaired,
     SuppliesAcquired,
     NewLocationOpened,
+    LocationListingAdded,
+    LocationListingRemoved,
     MachineStatusChanged,
     MachineBrokenDown,
     MachineWearUpdated,
@@ -87,9 +89,32 @@ def handle_new_location_opened(state: AgentState, event: NewLocationOpened) -> A
     new_location = LocationState(
         location_id=event.location_id,
         zone=event.zone,
-        monthly_rent=event.monthly_rent,
+        monthly_rent=getattr(event, 'monthly_rent', 2000.0),  # Use event field or default
     )
     new_state.locations[event.location_id] = new_location
+    return new_state
+
+
+def handle_location_listing_added(state: AgentState, event: LocationListingAdded) -> AgentState:
+    """Add a new location listing to available listings."""
+    from core.models import LocationListing
+    new_state = deepcopy(state)
+    listing = LocationListing(
+        listing_id=event.listing_id,
+        zone=event.zone,
+        monthly_rent=event.monthly_rent,
+        setup_cost=event.setup_cost,
+        description=event.description,
+    )
+    new_state.available_listings[event.listing_id] = listing
+    return new_state
+
+
+def handle_location_listing_removed(state: AgentState, event: LocationListingRemoved) -> AgentState:
+    """Remove a location listing from available listings."""
+    new_state = deepcopy(state)
+    if event.listing_id in new_state.available_listings:
+        del new_state.available_listings[event.listing_id]
     return new_state
 
 
@@ -146,6 +171,8 @@ OPERATIONAL_EVENT_HANDLERS = {
     "EquipmentRepaired": handle_equipment_repaired,
     "SuppliesAcquired": handle_supplies_acquired,
     "NewLocationOpened": handle_new_location_opened,
+    "LocationListingAdded": handle_location_listing_added,
+    "LocationListingRemoved": handle_location_listing_removed,
     "MachineStatusChanged": handle_machine_status_changed,
     "MachineBrokenDown": handle_machine_broken_down,
     "MachineWearUpdated": handle_machine_wear_updated,
@@ -161,6 +188,8 @@ __all__ = [
     "handle_equipment_repaired",
     "handle_supplies_acquired",
     "handle_new_location_opened",
+    "handle_location_listing_added",
+    "handle_location_listing_removed",
     "handle_machine_status_changed",
     "handle_machine_broken_down",
     "handle_machine_wear_updated",

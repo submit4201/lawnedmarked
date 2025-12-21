@@ -43,34 +43,48 @@ class SetPriceHandler(CommandHandler):
         Payload expected:
         {
             "location_id": str,
-            "service_name": str,
-            "new_price": float
+            "service_name": str | list[str],
+            "new_price": float | list[float]
         }
         """
-        location_id = command.payload.get("location_id")
-        service_name = command.payload.get("service_name")
-        new_price = command.payload.get("new_price")
+        # ! Updated to use attribute access for typed payloads
+        location_id = getattr(command.payload, "location_id", None)
+        service_names = getattr(command.payload, "service_name", None)
+        new_prices = getattr(command.payload, "new_price", None)
         
         # Validation
         if location_id not in state.locations:
             raise LocationNotFoundError(f"Location {location_id} not found")
         
-        if new_price < 0:
-            raise InvalidStateError("Price cannot be negative")
-        
-        # Emit event
-        event = PriceSet(
-            event_id=str(uuid.uuid4()),
-            event_type="PriceSet",
-            agent_id=state.agent_id,
-            timestamp=datetime.now(),
-            week=state.current_week,
-            location_id=location_id,
-            service_name=service_name,
-            new_price=new_price,
-        )
-        
-        return [event]
+        # Normalize to lists
+        if isinstance(service_names, str):
+            service_names = [service_names]
+        if isinstance(new_prices, (int, float)):
+            new_prices = [float(new_prices)]
+            
+        if not service_names or not new_prices:
+            raise InvalidStateError("Service name and price are required")
+            
+        if len(service_names) != len(new_prices):
+            raise InvalidStateError("Number of service names must match number of prices")
+            
+        events = []
+        for service_name, new_price in zip(service_names, new_prices):
+            if new_price < 0:
+                raise InvalidStateError(f"Price for {service_name} cannot be negative")
+                
+            events.append(PriceSet(
+                event_id=str(uuid.uuid4()),
+                event_type="PriceSet",
+                agent_id=state.agent_id,
+                timestamp=datetime.now(),
+                week=state.current_week,
+                location_id=location_id,
+                service_name=service_name,
+                new_price=new_price,
+            ))
+            
+        return events
 
 
 class TakeLoanHandler(CommandHandler):
@@ -79,27 +93,37 @@ class TakeLoanHandler(CommandHandler):
     Validates credit and emits LoanTaken event.
     """
     
+    LOAN_TERMS = {
+        "LOC": {"interest_rate": 0.08, "term_weeks": 0},  # Revolving
+        "EQUIPMENT": {"interest_rate": 0.06, "term_weeks": 52},
+        "EXPANSION": {"interest_rate": 0.05, "term_weeks": 104},
+        "EMERGENCY": {"interest_rate": 0.12, "term_weeks": 12},
+    }
+    
     def handle(self, state: AgentState, command: TakeLoanCommand) -> List[GameEvent]:
         """
         Validate and process loan request.
         
         Payload expected:
         {
-            "principal": float,
-            "interest_rate": float,
-            "term_weeks": int
+            "loan_type": str,  # "LOC", "EQUIPMENT", "EXPANSION", "EMERGENCY"
+            "amount": float
         }
         """
-        principal = command.payload.get("principal")
-        interest_rate = command.payload.get("interest_rate", 0.05)
-        term_weeks = command.payload.get("term_weeks", 26)
+        # ! Updated to use attribute access for typed payloads
+        loan_type = getattr(command.payload, "loan_type", "LOC")
+        amount = getattr(command.payload, "amount", None)
         
         # Validation: check credit rating for eligibility
         if state.credit_rating < 30:
             raise CreditError("Credit rating too low to qualify for loan")
         
-        if principal < 0:
-            raise InvalidStateError("Loan principal must be positive")
+        if amount is None or amount <= 0:
+            raise InvalidStateError("Loan amount must be positive")
+        
+        terms = self.LOAN_TERMS.get(loan_type, self.LOAN_TERMS["LOC"])
+        interest_rate = terms["interest_rate"]
+        term_weeks = terms["term_weeks"]
         
         # Create events: LoanTaken + FundsTransferred
         loan_id = str(uuid.uuid4())
@@ -111,7 +135,7 @@ class TakeLoanHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             loan_id=loan_id,
-            principal=principal,
+            principal=amount,
             interest_rate=interest_rate,
             term_weeks=term_weeks,
         )
@@ -122,9 +146,9 @@ class TakeLoanHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=principal,
+            amount=amount,
             transaction_type="LOAN",
-            description=f"Loan {loan_id}: {principal}",
+            description=f"Loan disbursement: {loan_type} ({loan_id})",
         )
         
         return [loan_event, funds_event]
@@ -139,19 +163,20 @@ class MakeDebtPaymentHandler(CommandHandler):
         
         Payload expected:
         {
-            "loan_id": str,
-            "payment_amount": float
+            "debt_id": str,
+            "amount": float
         }
         """
-        loan_id = command.payload.get("loan_id")
-        payment_amount = command.payload.get("payment_amount")
+        # ! Updated to use attribute access for typed payloads
+        loan_id = getattr(command.payload, "debt_id", None)
+        payment_amount = getattr(command.payload, "amount", None)
         
         # Validation
+        if payment_amount is None or payment_amount < 0:
+            raise InvalidStateError("Payment must be positive")
+            
         if payment_amount > state.cash_balance:
             raise InsufficientFundsError("Insufficient funds for payment")
-        
-        if payment_amount < 0:
-            raise InvalidStateError("Payment must be positive")
         
         # In a real system, you'd look up the loan details
         # For now, we'll make simple assumptions
@@ -159,7 +184,7 @@ class MakeDebtPaymentHandler(CommandHandler):
         interest_paid = payment_amount * 0.2
         remaining_balance = max(0, state.total_debt_owed - principal_reduction)
         
-        # Emit events
+        # Emit: DebtPaymentProcessed + FundsTransferred
         payment_event = DebtPaymentProcessed(
             event_id=str(uuid.uuid4()),
             event_type="DebtPaymentProcessed",
@@ -167,7 +192,7 @@ class MakeDebtPaymentHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             loan_id=loan_id,
-            payment_amount=payment_amount,
+            amount_paid=payment_amount,
             principal_reduction=principal_reduction,
             interest_paid=interest_paid,
             remaining_balance=remaining_balance,
@@ -179,9 +204,9 @@ class MakeDebtPaymentHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=payment_amount,
+            amount=-payment_amount,
             transaction_type="PAYMENT",
-            description=f"Debt payment for loan {loan_id}",
+            description=f"Debt payment for {loan_id}",
         )
         
         return [payment_event, funds_event]
@@ -197,23 +222,25 @@ class InvestInMarketingHandler(CommandHandler):
         Payload expected:
         {
             "location_id": str,
-            "marketing_cost": float,
-            "duration_weeks": int
+            "campaign_type": str,  # "FLYERS", "SOCIAL_MEDIA", "NEWSPAPER_AD", "SPONSORSHIP"
+            "cost": float
         }
         """
-        location_id = command.payload.get("location_id")
-        marketing_cost = command.payload.get("marketing_cost")
-        duration_weeks = command.payload.get("duration_weeks", 4)
+        # ! Updated to use attribute access for typed payloads
+        location_id = getattr(command.payload, "location_id", None)
+        campaign_type = getattr(command.payload, "campaign_type", "FLYERS")
+        marketing_cost = getattr(command.payload, "cost", None)
+        duration_weeks = 4  # Default duration
         
         # Validation
         if location_id not in state.locations:
             raise LocationNotFoundError(f"Location {location_id} not found")
         
+        if marketing_cost is None or marketing_cost < 0:
+            raise InvalidStateError("Marketing cost must be positive")
+            
         if marketing_cost > state.cash_balance:
             raise InsufficientFundsError("Insufficient funds for marketing")
-        
-        if marketing_cost < 0:
-            raise InvalidStateError("Marketing cost must be positive")
         
         # Calculate boost (simple linear model)
         # 100 dollars = 5% customer boost
@@ -227,6 +254,7 @@ class InvestInMarketingHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             location_id=location_id,
+            campaign_type=campaign_type,
             marketing_cost=marketing_cost,
             customer_attraction_boost=customer_attraction_boost,
             duration_weeks=duration_weeks,
@@ -238,9 +266,9 @@ class InvestInMarketingHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=marketing_cost,
+            amount=-marketing_cost,
             transaction_type="EXPENSE",
-            description=f"Marketing campaign at {location_id}",
+            description=f"Marketing campaign: {campaign_type} at {location_id}",
         )
         
         return [marketing_event, funds_event]
