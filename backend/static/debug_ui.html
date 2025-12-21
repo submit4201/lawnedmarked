@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Laundromat Tycoon - Debug</title>
+    </head>
+    <body>
+        <h3>Laundromat Tycoon - Debug</h3>
+        <div>
+            <label>Agent
+                <input id="agent" value="PLAYER_001" />
+            </label>
+            <label>Players
+                <input id="numPlayers" type="number" min="1" value="2" />
+            </label>
+            <label>Days
+                <input id="days" type="number" min="1" value="1" />
+            </label>
+            <button id="btn-start">Start Game</button>
+            <button id="btn-health">Health</button>
+            <button id="btn-state">State</button>
+            <button id="btn-history">History</button>
+            <button id="btn-advance">Advance Day</button>
+            <span id="status" style="margin-left:8px;"></span>
+        </div>
+
+        <h4>Health</h4>
+        <pre id="out-health" style="white-space:pre-wrap;"></pre>
+
+        <h4>State</h4>
+        <pre id="out-state" style="white-space:pre-wrap;"></pre>
+
+        <h4>History (Event Log)</h4>
+        <pre id="out-history" style="white-space:pre-wrap;"></pre>
+
+        <h4>Advance Day Result (Full)</h4>
+        <pre id="out-advance" style="white-space:pre-wrap;"></pre>
+
+        <script>
+            const btnHealth = document.getElementById('btn-health');
+            const btnState = document.getElementById('btn-state');
+            const btnHistory = document.getElementById('btn-history');
+            const btnAdvance = document.getElementById('btn-advance');
+            const btnStart = document.getElementById('btn-start');
+            const days = document.getElementById('days');
+            const agent = document.getElementById('agent');
+            const numPlayers = document.getElementById('numPlayers');
+            const outHealth = document.getElementById('out-health');
+            const outState = document.getElementById('out-state');
+            const outHistory = document.getElementById('out-history');
+            const outAdvance = document.getElementById('out-advance');
+            const status = document.getElementById('status');
+
+            function setBusy(isBusy, label) {
+                status.textContent = isBusy ? (label || 'Running...') : '';
+                btnStart.disabled = isBusy;
+                btnHealth.disabled = isBusy;
+                btnState.disabled = isBusy;
+                btnHistory.disabled = isBusy;
+                btnAdvance.disabled = isBusy;
+            }
+
+            async function fetchJson(url, options) {
+                const resp = await fetch(url, options);
+                const data = await resp.json();
+                return { ok: resp.ok, status: resp.status, data };
+            }
+
+            btnHealth.addEventListener('click', async () => {
+                setBusy(true, 'Loading /health...');
+                try {
+                    const r = await fetchJson('/health');
+                    outHealth.textContent = JSON.stringify(r.data, null, 2);
+
+                    // Convenience: if server reports players, keep agent input sane.
+                    if (r.data && Array.isArray(r.data.players) && r.data.players.length) {
+                        if (!r.data.players.includes(agent.value)) {
+                            agent.value = r.data.players[0];
+                        }
+                    }
+                } catch (e) {
+                    outHealth.textContent = String(e);
+                } finally {
+                    setBusy(false);
+                }
+            });
+
+            btnStart.addEventListener('click', async () => {
+                setBusy(true, 'Starting game...');
+                try {
+                    const n = Number(numPlayers.value || 1);
+                    const r = await fetchJson('/api/start_game', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ num_players: n })
+                    });
+                    // Refresh health so players list updates.
+                    outHealth.textContent = JSON.stringify(r.data, null, 2);
+                    try { await btnHealth.click(); } catch {}
+                } catch (e) {
+                    outHealth.textContent = String(e);
+                } finally {
+                    setBusy(false);
+                }
+            });
+
+            btnState.addEventListener('click', async () => {
+                setBusy(true, 'Loading state...');
+                try {
+                    const id = String(agent.value || 'PLAYER_001');
+                    const r = await fetchJson('/state/' + encodeURIComponent(id));
+                    outState.textContent = JSON.stringify(r.data, null, 2);
+                } catch (e) {
+                    outState.textContent = String(e);
+                } finally {
+                    setBusy(false);
+                }
+            });
+
+            btnHistory.addEventListener('click', async () => {
+                setBusy(true, 'Loading history...');
+                try {
+                    const id = String(agent.value || 'PLAYER_001');
+                    const r = await fetchJson('/history/' + encodeURIComponent(id));
+                    outHistory.textContent = JSON.stringify(r.data, null, 2);
+                } catch (e) {
+                    outHistory.textContent = String(e);
+                } finally {
+                    setBusy(false);
+                }
+            });
+
+            btnAdvance.addEventListener('click', async () => {
+                setBusy(true, 'Advancing day...');
+                outAdvance.textContent = '';
+                try {
+                    const id = String(agent.value || 'PLAYER_001');
+                    const r = await fetchJson('/api/advance_day', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ agent_ids: [id], days: Number(days.value || 1) })
+                    });
+                    outAdvance.textContent = JSON.stringify(r.data, null, 2);
+
+                    // After advancing, refresh state + history so you can see everything that changed.
+                    try {
+                        const s = await fetchJson('/state/' + encodeURIComponent(id));
+                        outState.textContent = JSON.stringify(s.data, null, 2);
+                    } catch {}
+                    try {
+                        const h = await fetchJson('/history/' + encodeURIComponent(id));
+                        outHistory.textContent = JSON.stringify(h.data, null, 2);
+                    } catch {}
+                } catch (e) {
+                    outAdvance.textContent = String(e);
+                } finally {
+                    setBusy(false);
+                }
+            });
+
+            // Initial load
+            btnHealth.click();
+        </script>
+    </body>
+</html>

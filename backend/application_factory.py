@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 import os
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 
 from adjudication.game_master import GameMaster
 from adjudication.judge import Judge
@@ -30,10 +30,7 @@ from llm.tools.executors import ToolRouter
 from llm.tools.registry import ToolRegistry
 from projection.handlers.core_handlers import CORE_EVENT_HANDLERS
 from projection.state_builder import StateBuilder
-
-
-# ! _to_serializable is imported from infrastructure.serialization
-# * Consolidated to eliminate code duplication
+from llm.providers import FallbackProvider
 
 
 class ApplicationFactory:
@@ -43,17 +40,26 @@ class ApplicationFactory:
     def create_game_engine(
         event_repository: EventRepository | None = None,
     ) -> Tuple[GameEngine, GameMaster, Judge, LLMDispatcher]:
-        """Create and initialize the complete system.
+        """Create and initialize the complete system."""
+        
+        ApplicationFactory._load_environment()
 
-        Returns:
-            (game_engine, game_master, judge, llm_dispatcher)
-        """
+        if event_repository is None:
+            event_repository = InMemoryEventRepository()
 
-        # Best-effort env loading (no hardcoded paths).
-        # ! Load from parent directory if .env isn't in current dir
+        game_engine = ApplicationFactory._setup_game_engine(event_repository)
+        game_master = GameMaster(event_repository)
+        judge = Judge(event_repository)
+
+        llm_dispatcher = ApplicationFactory._setup_llm_stack(game_engine)
+
+        return game_engine, game_master, judge, llm_dispatcher
+
+    @staticmethod
+    def _load_environment():
+        """Best-effort env loading."""
         try:
             from dotenv import load_dotenv  # type: ignore
-            from pathlib import Path
             
             # Try current dir first, then parent
             if Path(".env").exists():
@@ -61,14 +67,12 @@ class ApplicationFactory:
             elif Path("../.env").exists():
                 load_dotenv(Path("../.env"))
             else:
-                # Let dotenv search up the directory tree
                 load_dotenv(find_dotenv=True)
         except Exception:
             pass
 
-        if event_repository is None:
-            event_repository = InMemoryEventRepository()
-
+    @staticmethod
+    def _setup_game_engine(event_repository: EventRepository) -> GameEngine:
         action_registry = ActionRegistry()
         event_registry = EventRegistry()
 
@@ -90,31 +94,83 @@ class ApplicationFactory:
         )
         state_builder = StateBuilder(event_registry, initial_state)
 
-        game_engine = GameEngine(
+        return GameEngine(
             event_repository=event_repository,
             action_registry=action_registry,
             event_registry=event_registry,
             state_builder=state_builder,
         )
 
-        game_master = GameMaster(event_repository)
-        judge = Judge(event_repository)
-
-        # LLM stack
+    @staticmethod
+    def _setup_llm_stack(game_engine: GameEngine) -> LLMDispatcher:
         session_store = SessionStore()
         audit_log = AuditLog(Path(__file__).resolve().parent / "logs" / "llm_responses.log")
+        
+        provider_map = ApplicationFactory._create_provider_map()
+        
+        tool_router = ToolRouter(session_store=session_store, api_client=ApplicationFactory._create_api_client(game_engine))
+        tool_executor = ToolExecutor(
+            [
+                ToolSpec(
+                    name=t.name,
+                    description=t.description,
+                    schema=t.schema,
+                    handler=lambda p, n=t.name: tool_router.execute(n, p),
+                )
+                for t in ToolRegistry.get_all_tools()
+            ],
+            audit_log=audit_log,
+        )
+        
+        from llm.dispatcher import GM_AGENT_ID, JUDGE_AGENT_ID
+        
+        # Determine default keys
+        gemini_available = "gemini" in provider_map
+        default_player_provider = "default"
+        # Since we don't have the explicit list of names easily without reparsing, we check keys
+        # But we can re-implement logic if needed. For now "default" is safe if no other specific logic.
+        
+        # Re-parse quickly to find first custom provider if any
+        providers_csv = (os.getenv("LLM_PROVIDERS") or "").strip()
+        first_provider = None
+        if providers_csv:
+             # Basic parse to get first name
+             first_provider = providers_csv.split(",")[0].strip().lower()
+             
+        p_key = os.getenv("PLAYER_PROVIDER_KEY", first_provider or "default")
+        if p_key not in provider_map:
+             p_key = "default"
 
-        # Providers available to the dispatcher.
-        #
-        # If LLM_PROVIDERS is set (comma-separated), create all of them and set
-        # "default" to a fallback chain that tries them in order.
-        # Otherwise, keep the legacy behavior (local + optional azure_openai).
-        from llm.providers import FallbackProvider
+        gm_provider = os.getenv("GM_PROVIDER_KEY", "gemini" if gemini_available else "default")
+        if gm_provider not in provider_map:
+            gm_provider = "default"
 
+        judge_provider = os.getenv("JUDGE_PROVIDER_KEY", "gemini" if gemini_available else "default")
+        if judge_provider not in provider_map:
+            judge_provider = "default"
+            
+        provider_config_map = {
+            "PLAYER_000": {"provider_key": "default"},
+            "PLAYER_001": {"provider_key": p_key},
+            GM_AGENT_ID: {"provider_key": gm_provider},
+            JUDGE_AGENT_ID: {"provider_key": judge_provider},
+        }
+
+        return LLMDispatcher(
+            provider_map=provider_map,
+            provider_config_map=provider_config_map,
+            tool_executor=tool_executor,
+            audit_log=audit_log,
+            session_store=session_store,
+            command_executor=lambda agent_id, command: game_engine.execute_command(agent_id, command),
+            game_engine=game_engine,
+        )
+
+    @staticmethod
+    def _create_provider_map() -> Dict[str, Any]:
         provider_map: Dict[str, Any] = {"mock": MockLLM()}
         providers_csv = (os.getenv("LLM_PROVIDERS") or "").strip()
 
-        # ! Common typo corrections for provider names
         PROVIDER_ALIASES = {
             "geminiest": "gemini",
             "gpt": "openai",
@@ -124,7 +180,6 @@ class ApplicationFactory:
 
         if providers_csv:
             names = [n.strip().lower() for n in providers_csv.split(",") if n.strip()]
-            # Apply typo corrections
             names = [PROVIDER_ALIASES.get(n, n) for n in names]
             built: list[Any] = []
             info_parts: list[str] = []
@@ -139,36 +194,13 @@ class ApplicationFactory:
             if built:
                 provider_map["default"] = FallbackProvider(built)
                 print(f"[LLM] Providers: {', '.join(info_parts)}")
-                print(f"[LLM] Default: fallback({', '.join(names)})")
             else:
                 print("[LLM] No providers created from LLM_PROVIDERS, falling back to local")
+                ApplicationFactory._add_local_provider(provider_map)
         else:
-            provider_1, provider_info_1 = create_provider_from_env("local")
-            if provider_info_1:
-                # Keep initialization visible during startup
-                print(f"[LLM] Provider: {provider_info_1}")
-            provider_map["default"] = provider_1
-
-            provider_2 = None
-            provider_info_2 = ""
-            azure_enabled = bool(
-                (os.getenv("AZURE_api_key") or os.getenv("LLM_API_KEY"))
-                and (os.getenv("AZURE_base_url") or os.getenv("LLM_ENDPOINT"))
-                and (
-                    os.getenv("AZURE_deployment")
-                    or os.getenv("AZURE_deployment_name")
-                    or os.getenv("LLM_MODEL")
-                )
-            )
-            if azure_enabled:
-                provider_2, provider_info_2 = create_provider_from_env("azure_openai")
-                if provider_info_2:
-                    print(f"[LLM] Provider: {provider_info_2}")
-                if provider_2 is not None:
-                    provider_map["azure_openai"] = provider_2
-
+            ApplicationFactory._add_local_provider(provider_map)
+            
         # Ensure Gemini provider is available when configured.
-        # This is primarily used for SYSTEM_GM / SYSTEM_JUDGE roles.
         if "gemini" not in provider_map and (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
             try:
                 gem, info = create_provider_from_env("gemini")
@@ -176,6 +208,36 @@ class ApplicationFactory:
                 print(f"[LLM] Provider: {info}")
             except Exception as exc:
                 print(f"[LLM][gemini][warn] failed to initialize gemini provider: {exc}")
+
+        return provider_map
+
+    @staticmethod
+    def _add_local_provider(provider_map: Dict[str, Any]):
+        provider_1, provider_info_1 = create_provider_from_env("local")
+        if provider_info_1:
+            print(f"[LLM] Provider: {provider_info_1}")
+        provider_map["default"] = provider_1
+        
+        # Check Azure env vars to optionally add azure_openai
+        # Logic copied from original
+        azure_enabled = bool(
+            (os.getenv("AZURE_api_key") or os.getenv("LLM_API_KEY"))
+            and (os.getenv("AZURE_base_url") or os.getenv("LLM_ENDPOINT"))
+            and (
+                os.getenv("AZURE_deployment")
+                or os.getenv("AZURE_deployment_name")
+                or os.getenv("LLM_MODEL")
+            )
+        )
+        if azure_enabled:
+             p2, info2 = create_provider_from_env("azure_openai")
+             if info2:
+                 print(f"[LLM] Provider: {info2}")
+             if p2:
+                 provider_map["azure_openai"] = p2
+
+    @staticmethod
+    def _create_api_client(game_engine: GameEngine) -> Any:
         def api_client(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             if action == "GET_STATE":
                 agent_id = payload.get("agent_id", "")
@@ -240,57 +302,6 @@ class ApplicationFactory:
                 return {"ok": True}
 
             return {"error": f"Unknown api_client action {action}"}
-
-        tool_router = ToolRouter(session_store=session_store, api_client=api_client)
-        tool_executor = ToolExecutor(
-            [
-                ToolSpec(
-                    name=t.name,
-                    description=t.description,
-                    schema=t.schema,
-                    handler=lambda p, n=t.name: tool_router.execute(n, p),
-                )
-                for t in ToolRegistry.get_all_tools()
-            ],
-            audit_log=audit_log,
-        )
-
-        from llm.dispatcher import GM_AGENT_ID, JUDGE_AGENT_ID
-
-        # ! Default to first LLM_PROVIDERS entry for player, 'default' as fallback
-        # Previously defaulted to 'default' which is the FallbackProvider - now use first real provider
-        first_provider = names[0] if providers_csv and names else None
-        gemini_available = "gemini" in provider_map
-        default_player_provider = os.getenv("PLAYER_PROVIDER_KEY", first_provider or "default")
-        if default_player_provider not in provider_map:
-            default_player_provider = "default"
-
-        gm_provider = os.getenv("GM_PROVIDER_KEY", "gemini" if gemini_available else "default")
-        if gm_provider not in provider_map:
-            gm_provider = "default"
-
-        judge_provider = os.getenv("JUDGE_PROVIDER_KEY", "gemini" if gemini_available else "default")
-        if judge_provider not in provider_map:
-            judge_provider = "default"
-
-        provider_config_map = {
-            "PLAYER_000": {"provider_key": "default"},
-            "PLAYER_001": {"provider_key": default_player_provider},
-            GM_AGENT_ID: {"provider_key": gm_provider},
-            JUDGE_AGENT_ID: {"provider_key": judge_provider},
-        }
-
-        llm_dispatcher = LLMDispatcher(
-            provider_map=provider_map,
-            provider_config_map=provider_config_map,
-            tool_executor=tool_executor,
-            audit_log=audit_log,
-            session_store=session_store,
-            command_executor=lambda agent_id, command: game_engine.execute_command(agent_id, command),
-            game_engine=game_engine,
-        )
-
-        return game_engine, game_master, judge, llm_dispatcher
-
+        return api_client
 
 __all__ = ["ApplicationFactory"]

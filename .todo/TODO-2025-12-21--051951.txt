@@ -1,0 +1,21 @@
+Scanned on: 2025-12-21 05:19:51.165117
+==================================================
+[IMPORTANT] llm_factory.py:109 Keep the typed payload object - handlers expect .attribute access
+[IMPORTANT] adjudication_handlers.py:75 Use getattr for typed payloads
+[IMPORTANT] financial_handlers.py:50 Updated to use attribute access for typed payloads
+[IMPORTANT] financial_handlers.py:113 Updated to use attribute access for typed payloads
+[IMPORTANT] financial_handlers.py:170 Updated to use attribute access for typed payloads
+[IMPORTANT] financial_handlers.py:229 Updated to use attribute access for typed payloads
+[IMPORTANT] serialization.py:58 Legacy alias for backward compatibility
+[NOTE] serialization.py:59 Some modules may still reference _to_serializable
+[IMPORTANT] azure_openai_provider.py:25 Updated to newer API version for gpt-5 models
+[IMPORTANT] azure_openai_provider.py:46 Minimal kwargs - only model and messages required
+[IMPORTANT] factory.py:84 For azure_openai, also check AZURE_ prefix as fallback
+[IMPORTANT] registry.py:116 Example usage for each command - returned by tool_help when querying specific tool
+[IMPORTANT] registry.py:150 Minimal tool set - state/history already in system prompt
+[IMPORTANT] registry.py:244 Always include schema and example when describing a specific tool
+[IMPORTANT] App.tsx:42 Keyboard shortcuts for power users
+[IMPORTANT] toast.tsx:14 Custom toast styling matching the Executive War Room theme
+[IMPORTANT] gameService.ts:17 Silent fail for polling - don't spam toasts
+[IMPORTANT] gameService.ts:35 Silent fail for polling - don't spam toasts
+[IMPORTANT] LegalView.tsx:6 Fix: Added selectedAgent prop to avoid hardcoded agent ID

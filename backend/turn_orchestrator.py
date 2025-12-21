@@ -21,10 +21,6 @@ from engine.game_engine import GameEngine
 from infrastructure.serialization import to_serializable as _to_serializable
 
 
-# ! _to_serializable is imported from infrastructure.serialization
-# * Consolidated to eliminate code duplication
-
-
 def _next_time(day: int, week: int) -> Tuple[int, int]:
     new_day = day + 1
     new_week = week
@@ -35,10 +31,7 @@ def _next_time(day: int, week: int) -> Tuple[int, int]:
 
 
 def _event_brief(event: Any) -> Dict[str, Any]:
-    """Create a small, stable summary for an event.
-
-    This is intentionally lossy to keep LLM prompts small.
-    """
+    """Create a small, stable summary for an event."""
     data: Dict[str, Any] = {
         "event_type": getattr(event, "event_type", ""),
         "event_id": getattr(event, "event_id", ""),
@@ -132,12 +125,7 @@ class TurnOrchestrator:
         if not agent_ids:
             agent_ids = ["PLAYER_001"]
 
-        # Ensure the dispatcher can run for all requested agents.
-        if self.llm_dispatcher is not None:
-            cfg = getattr(self.llm_dispatcher, "provider_config_map", None)
-            if isinstance(cfg, dict):
-                for agent_id in agent_ids:
-                    cfg.setdefault(agent_id, {"provider_key": "default"})
+        self._ensure_dispatcher_config(agent_ids)
 
         summary: Dict[str, Any] = {
             "days": days,
@@ -147,94 +135,112 @@ class TurnOrchestrator:
 
         for _ in range(days):
             tick_data: Dict[str, Any] = {"agents": {}}
-
             for agent_id in agent_ids:
-                before = self.game_engine.get_current_state(agent_id)
-                current_day = int(getattr(before, "current_day", 0))
-                current_week = int(getattr(before, "current_week", 0))
-                new_day, new_week = _next_time(current_day, current_week)
-
-                _ok, time_events = self.game_engine.advance_time(agent_id=agent_id, day=new_day, week=new_week)
-                time_event = time_events[0]
-
-                # Rebuild state after time advance.
-                state = self.game_engine.get_current_state(agent_id)
-
-                generated_events = []
-                for location_id in list(state.locations.keys()):
-                    generated_events.extend(AutonomousSimulation.process_daily_tick(state, location_id))
-
-                    if new_day == 0:
-                        generated_events.extend(AutonomousSimulation.process_weekly_costs(state, location_id))
-                        generated_events.extend(AutonomousSimulation.process_machine_wear(state, location_id))
-
-                if new_day == 0:
-                    generated_events.extend(AutonomousSimulation.process_scandal_decay(state))
-                    if new_week > 0 and (new_week % 4) == 0:
-                        generated_events.extend(AutonomousSimulation.process_monthly_interest(state))
-
-                for evt in generated_events:
-                    self.game_engine.event_repository.save(evt)
-
-                # Refresh state for adjudication + LLM turns.
-                state = self.game_engine.get_current_state(agent_id)
-
-                gm_result = None
-                judge_result = None
-                player_result = None
-
-                # GM LLM injection (Commented out for debugging)
-                if self.llm_dispatcher is not None:
-                    try:
-                        gm_ctx = self.game_master.prepare_gm_context(state)
-                        gm_result = await self.llm_dispatcher.run_gm_turn(agent_id, gm_ctx)
-                    except Exception as exc:
-                        gm_result = {"error": str(exc)}
-
-                state = self.game_engine.get_current_state(agent_id)
-
-                # Judge LLM injection
-                if self.llm_dispatcher is not None:
-                    try:
-                        recent = [time_event, *generated_events]
-                        judge_ctx = self.judge.prepare_judge_context(state, recent)
-                        judge_result = await self.llm_dispatcher.run_judge_turn(agent_id, judge_ctx)
-                    except Exception as exc:
-                        judge_result = {"error": str(exc)}
-
-                state = self.game_engine.get_current_state(agent_id)
-
-                # Player / competitor LLM turn
-                if self.llm_dispatcher is not None:
-                    try:
-                        recent_for_player = [time_event, *generated_events]
-                        context_packet = _build_player_turn_packet(state, recent_for_player)
-                        context_msg = "TURN_PACKET: " + json.dumps(context_packet, default=str)
-                        player_result = await self.llm_dispatcher.run_player_turn(
-                            agent_id,
-                            history_messages=[{"role": "user", "content": context_msg}],
-                        )
-                    except Exception as exc:
-                        player_result = {"error": str(exc)}
-
-                # Snapshot after all actions.
-                after = self.game_engine.get_current_state(agent_id)
-
-                tick_data["agents"][agent_id] = {
-                    "time": {"week": new_week, "day": new_day},
-                    "events": {
-                        "time_advanced": [e.event_type for e in time_events],
-                        "autonomous": [e.event_type for e in generated_events],
-                    },
-                    "gm": gm_result,
-                    "judge": judge_result,
-                    "player": player_result,
-                    "state": _to_serializable(after),
-                }
-
+                tick_data["agents"][agent_id] = await self._process_agent_tick(agent_id)
             summary["ticks"].append(tick_data)
 
         return summary
+
+    def _ensure_dispatcher_config(self, agent_ids: List[str]):
+        if self.llm_dispatcher is not None:
+            cfg = getattr(self.llm_dispatcher, "provider_config_map", None)
+            if isinstance(cfg, dict):
+                for agent_id in agent_ids:
+                    cfg.setdefault(agent_id, {"provider_key": "default"})
+
+    async def _process_agent_tick(self, agent_id: str) -> Dict[str, Any]:
+        before = self.game_engine.get_current_state(agent_id)
+        current_day = int(getattr(before, "current_day", 0))
+        current_week = int(getattr(before, "current_week", 0))
+        new_day, new_week = _next_time(current_day, current_week)
+
+        _ok, time_events = self.game_engine.advance_time(agent_id=agent_id, day=new_day, week=new_week)
+        time_event = time_events[0]
+
+        # Autonomous events
+        generated_events = self._run_autonomous_events(agent_id, new_day, new_week)
+        for evt in generated_events:
+            self.game_engine.event_repository.save(evt)
+
+        # System Agents (GM, Judge)
+        gm_result = await self._run_gm_turn(agent_id)
+        judge_result = await self._run_judge_turn(agent_id, time_event, generated_events)
+
+        # Player Turn
+        player_result = await self._run_player_turn(agent_id, time_event, generated_events)
+
+        # Final State
+        after = self.game_engine.get_current_state(agent_id)
+
+        return {
+            "time": {"week": new_week, "day": new_day},
+            "events": {
+                "time_advanced": [e.event_type for e in time_events],
+                "autonomous": [e.event_type for e in generated_events],
+            },
+            "gm": gm_result,
+            "judge": judge_result,
+            "player": player_result,
+            "state": _to_serializable(after),
+        }
+
+    def _run_autonomous_events(self, agent_id: str, new_day: int, new_week: int) -> List[Any]:
+        state = self.game_engine.get_current_state(agent_id)
+        generated_events = []
+        for location_id in list(state.locations.keys()):
+            generated_events.extend(AutonomousSimulation.process_daily_tick(state, location_id))
+
+            if new_day == 0:
+                generated_events.extend(AutonomousSimulation.process_weekly_costs(state, location_id))
+                generated_events.extend(AutonomousSimulation.process_machine_wear(state, location_id))
+
+        if new_day == 0:
+            generated_events.extend(AutonomousSimulation.process_scandal_decay(state))
+            if new_week > 0 and (new_week % 4) == 0:
+                generated_events.extend(AutonomousSimulation.process_monthly_interest(state))
+        
+        return generated_events
+
+    async def _run_gm_turn(self, agent_id: str) -> Any:
+        if self.llm_dispatcher is None:
+            return None
+        
+        state = self.game_engine.get_current_state(agent_id)
+        try:
+            gm_ctx = self.game_master.prepare_gm_context(state)
+            return await self.llm_dispatcher.run_gm_turn(agent_id, gm_ctx)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    async def _run_judge_turn(self, agent_id: str, time_event: Any, generated_events: List[Any]) -> Any:
+        if self.llm_dispatcher is None:
+            return None
+        
+        state = self.game_engine.get_current_state(agent_id)
+        try:
+            recent = [time_event, *generated_events]
+            judge_ctx = self.judge.prepare_judge_context(state, recent)
+            if hasattr(self.llm_dispatcher, 'run_judge_turn'):
+                 return await self.llm_dispatcher.run_judge_turn(agent_id, judge_ctx)
+            return None # run_judge_turn might not exist in dispatcher yet, optional
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    async def _run_player_turn(self, agent_id: str, time_event: Any, generated_events: List[Any]) -> Any:
+        if self.llm_dispatcher is None:
+            return None
+
+        state = self.game_engine.get_current_state(agent_id)
+        try:
+            recent_for_player = [time_event, *generated_events]
+            context_packet = _build_player_turn_packet(state, recent_for_player)
+            context_msg = "TURN_PACKET: " + json.dumps(context_packet, default=str)
+            return await self.llm_dispatcher.run_player_turn(
+                agent_id,
+                history_messages=[{"role": "user", "content": context_msg}],
+            )
+        except Exception as exc:
+            return {"error": str(exc)}
 
 
 def default_days_from_env() -> int:

@@ -13,9 +13,11 @@ import json
 import time
 from typing import List, Optional
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles # Added for robust static file serving if needed
 from pydantic import BaseModel
 
 from core.events import GameStarted
@@ -39,6 +41,8 @@ engine = game_engine
 
 app = FastAPI(title="Laundromat Tycoon API", version="0.1.0")
 
+# Mount static files if needed, or just serve specific files
+# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class AdvanceDayRequest(BaseModel):
     agent_ids: Optional[List[str]] = None
@@ -103,13 +107,7 @@ async def get_history(
 
 @app.post("/api/start_game", response_model=StartGameResponse)
 async def start_game(req: StartGameRequest | None = None):
-    """Initialize a new game session for one or more players.
-
-    Why this exists:
-    - Players are listed via events (engine.list_agents()), so we emit a GameStarted fact.
-    - We also ensure the LLM dispatcher has a provider mapping for each player.
-    """
-
+    """Initialize a new game session for one or more players."""
     scenario = (req.scenario if req and req.scenario is not None else "")
     force = bool(req.force) if req else False
 
@@ -165,11 +163,7 @@ async def start_game(req: StartGameRequest | None = None):
 
 @app.post("/api/advance_day")
 async def advance_day(req: AdvanceDayRequest | None = None):
-    """Advance the simulation by 1+ days.
-
-    This is the primary execution endpoint. It runs the full tick cycle:
-    TimeAdvanced → autonomous sim → GM → Judge → players/competitors.
-    """
+    """Advance the simulation by 1+ days."""
     days = (req.days if req and req.days is not None else default_days_from_env())
     agent_ids = (req.agent_ids if req and req.agent_ids else None)
 
@@ -204,7 +198,15 @@ async def advance_day(req: AdvanceDayRequest | None = None):
     result = await orchestrator.run_full_tick_cycle(agent_ids=agent_ids, days=days)
     elapsed_ms = (time.perf_counter() - perf_start) * 1000.0
 
-    # Print a concise, human-readable summary per tick/agent.
+    # Print summary
+    _print_tick_summary(result)
+
+    print(f"[ADVANCE_DAY] done elapsed_ms={elapsed_ms:.1f}")
+    return result
+
+
+def _print_tick_summary(result: dict):
+    """Print a concise, human-readable summary per tick/agent."""
     try:
         ticks = result.get("ticks", []) if isinstance(result, dict) else []
         for i, tick in enumerate(ticks, 1):
@@ -232,186 +234,15 @@ async def advance_day(req: AdvanceDayRequest | None = None):
                     f"events(time={len(time_events)}, auto={len(autonomous_events)})" + (f" errors={errs}" if errs else "")
                 )
     except Exception:
-        # Logging is best-effort; never fail the API call because of printing.
         pass
 
-    print(f"[ADVANCE_DAY] done elapsed_ms={elapsed_ms:.1f}")
-    return result
 
-
-@app.get("/ui", response_class=HTMLResponse)
+@app.get("/ui")
 async def ui():
-        """Single-page debug UI to view state, history, and advance-day results."""
-        return """<!doctype html>
-<html lang=\"en\">
-    <head>
-        <meta charset=\"utf-8\" />
-        <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
-        <title>Laundromat Tycoon - Debug</title>
-    </head>
-    <body>
-        <h3>Laundromat Tycoon - Debug</h3>
-        <div>
-            <label>Agent
-                <input id=\"agent\" value=\"PLAYER_001\" />
-            </label>
-            <label>Players
-                <input id=\"numPlayers\" type=\"number\" min=\"1\" value=\"2\" />
-            </label>
-            <label>Days
-                <input id=\"days\" type=\"number\" min=\"1\" value=\"1\" />
-            </label>
-            <button id=\"btn-start\">Start Game</button>
-            <button id=\"btn-health\">Health</button>
-            <button id=\"btn-state\">State</button>
-            <button id=\"btn-history\">History</button>
-            <button id=\"btn-advance\">Advance Day</button>
-            <span id=\"status\" style=\"margin-left:8px;\"></span>
-        </div>
-
-        <h4>Health</h4>
-        <pre id=\"out-health\" style=\"white-space:pre-wrap;\"></pre>
-
-        <h4>State</h4>
-        <pre id=\"out-state\" style=\"white-space:pre-wrap;\"></pre>
-
-        <h4>History (Event Log)</h4>
-        <pre id=\"out-history\" style=\"white-space:pre-wrap;\"></pre>
-
-        <h4>Advance Day Result (Full)</h4>
-        <pre id=\"out-advance\" style=\"white-space:pre-wrap;\"></pre>
-
-        <script>
-            const btnHealth = document.getElementById('btn-health');
-            const btnState = document.getElementById('btn-state');
-            const btnHistory = document.getElementById('btn-history');
-            const btnAdvance = document.getElementById('btn-advance');
-            const btnStart = document.getElementById('btn-start');
-            const days = document.getElementById('days');
-            const agent = document.getElementById('agent');
-            const numPlayers = document.getElementById('numPlayers');
-            const outHealth = document.getElementById('out-health');
-            const outState = document.getElementById('out-state');
-            const outHistory = document.getElementById('out-history');
-            const outAdvance = document.getElementById('out-advance');
-            const status = document.getElementById('status');
-
-            function setBusy(isBusy, label) {
-                status.textContent = isBusy ? (label || 'Running...') : '';
-                btnStart.disabled = isBusy;
-                btnHealth.disabled = isBusy;
-                btnState.disabled = isBusy;
-                btnHistory.disabled = isBusy;
-                btnAdvance.disabled = isBusy;
-            }
-
-            async function fetchJson(url, options) {
-                const resp = await fetch(url, options);
-                const data = await resp.json();
-                return { ok: resp.ok, status: resp.status, data };
-            }
-
-            btnHealth.addEventListener('click', async () => {
-                setBusy(true, 'Loading /health...');
-                try {
-                    const r = await fetchJson('/health');
-                    outHealth.textContent = JSON.stringify(r.data, null, 2);
-
-                    // Convenience: if server reports players, keep agent input sane.
-                    if (r.data && Array.isArray(r.data.players) && r.data.players.length) {
-                        if (!r.data.players.includes(agent.value)) {
-                            agent.value = r.data.players[0];
-                        }
-                    }
-                } catch (e) {
-                    outHealth.textContent = String(e);
-                } finally {
-                    setBusy(false);
-                }
-            });
-
-            btnStart.addEventListener('click', async () => {
-                setBusy(true, 'Starting game...');
-                try {
-                    const n = Number(numPlayers.value || 1);
-                    const r = await fetchJson('/api/start_game', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ num_players: n })
-                    });
-                    // Refresh health so players list updates.
-                    outHealth.textContent = JSON.stringify(r.data, null, 2);
-                    try { await btnHealth.click(); } catch {}
-                } catch (e) {
-                    outHealth.textContent = String(e);
-                } finally {
-                    setBusy(false);
-                }
-            });
-
-            btnState.addEventListener('click', async () => {
-                setBusy(true, 'Loading state...');
-                try {
-                    const id = String(agent.value || 'PLAYER_001');
-                    const r = await fetchJson('/state/' + encodeURIComponent(id));
-                    outState.textContent = JSON.stringify(r.data, null, 2);
-                } catch (e) {
-                    outState.textContent = String(e);
-                } finally {
-                    setBusy(false);
-                }
-            });
-
-            btnHistory.addEventListener('click', async () => {
-                setBusy(true, 'Loading history...');
-                try {
-                    const id = String(agent.value || 'PLAYER_001');
-                    const r = await fetchJson('/history/' + encodeURIComponent(id));
-                    outHistory.textContent = JSON.stringify(r.data, null, 2);
-                } catch (e) {
-                    outHistory.textContent = String(e);
-                } finally {
-                    setBusy(false);
-                }
-            });
-
-            btnAdvance.addEventListener('click', async () => {
-                setBusy(true, 'Advancing day...');
-                outAdvance.textContent = '';
-                try {
-                    const id = String(agent.value || 'PLAYER_001');
-                    const r = await fetchJson('/api/advance_day', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ agent_ids: [id], days: Number(days.value || 1) })
-                    });
-                    outAdvance.textContent = JSON.stringify(r.data, null, 2);
-
-                    // After advancing, refresh state + history so you can see everything that changed.
-                    try {
-                        const s = await fetchJson('/state/' + encodeURIComponent(id));
-                        outState.textContent = JSON.stringify(s.data, null, 2);
-                    } catch {}
-                    try {
-                        const h = await fetchJson('/history/' + encodeURIComponent(id));
-                        outHistory.textContent = JSON.stringify(h.data, null, 2);
-                    } catch {}
-                } catch (e) {
-                    outAdvance.textContent = String(e);
-                } finally {
-                    setBusy(false);
-                }
-            });
-
-            // Initial load
-            btnHealth.click();
-        </script>
-    </body>
-</html>"""
-
-
-# ! _to_serializable is now imported from infrastructure.serialization
-# * Consolidated to eliminate code duplication (was in 3 files)
+    """Single-page debug UI to view state, history, and advance-day results."""
+    # Serve the static file
+    static_path = Path(__file__).resolve().parent / "static" / "debug_ui.html"
+    return FileResponse(static_path)
 
 
 @app.get("/health")
