@@ -5,6 +5,7 @@ Vendor relationship projection handlers.
 from copy import deepcopy
 from core.models import AgentState, VendorRelationship, VendorTier
 from core.events import (
+    VendorNegotiationInitiated,
     VendorNegotiationResult,
     ExclusiveContractSigned,
     VendorTermsUpdated,
@@ -13,6 +14,11 @@ from core.events import (
     VendorPriceFluctuated,
     DeliveryDisruption,
 )
+
+
+def handle_vendor_negotiation_initiated(state: AgentState, event: VendorNegotiationInitiated) -> AgentState:
+    """Record that a negotiation was initiated (no-op for state)."""
+    return deepcopy(state)
 
 
 def handle_vendor_negotiation_result(state: AgentState, event: VendorNegotiationResult) -> AgentState:
@@ -32,6 +38,10 @@ def handle_vendor_negotiation_result(state: AgentState, event: VendorNegotiation
             location.vendor_relationships[event.vendor_id] = vendor_rel
         if event.negotiation_succeeded:
             vendor_rel.weeks_at_tier += 1
+            # Apply discount if provided (e.g., 0.1 means 10% off)
+            if event.proposed_discount > 0:
+                # Baseline is 1.0, so 0.1 discount makes it 0.9
+                vendor_rel.current_price_per_unit = max(0.1, 1.0 - event.proposed_discount)
     return new_state
 
 
@@ -95,16 +105,27 @@ def handle_vendor_tier_demoted(state: AgentState, event: VendorTierDemoted) -> A
 
 
 def handle_vendor_price_fluctuated(state: AgentState, event: VendorPriceFluctuated) -> AgentState:
-    """Placeholder for vendor price changes (no direct state change yet)."""
-    return deepcopy(state)
+    """Update vendor price across all locations."""
+    new_state = deepcopy(state)
+    for location in new_state.locations.values():
+        vendor_rel = location.vendor_relationships.get(event.vendor_id)
+        if vendor_rel:
+            vendor_rel.current_price_per_unit = event.new_price_per_unit
+    return new_state
 
 
 def handle_delivery_disruption(state: AgentState, event: DeliveryDisruption) -> AgentState:
-    """Placeholder for delivery disruptions (no direct state change yet)."""
-    return deepcopy(state)
+    """Mark vendor as disrupted across all locations."""
+    new_state = deepcopy(state)
+    for location in new_state.locations.values():
+        vendor_rel = location.vendor_relationships.get(event.vendor_id)
+        if vendor_rel:
+            vendor_rel.is_disrupted = True
+    return new_state
 
 
 VENDOR_EVENT_HANDLERS = {
+    "VendorNegotiationInitiated": handle_vendor_negotiation_initiated,
     "VendorNegotiationResult": handle_vendor_negotiation_result,
     "ExclusiveContractSigned": handle_exclusive_contract_signed,
     "VendorTermsUpdated": handle_vendor_terms_updated,

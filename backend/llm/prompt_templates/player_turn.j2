@@ -1,11 +1,32 @@
-Current Week: {{current_week}}
-Cash: ${{cash_balance}}
-Debt: ${{total_debt}}
-Social Score: {{social_score}}
-Credit Rating: {{credit_rating}}
-Locations: {{location_count}}
-Location IDs: {{location_ids}}
+State:
+Current Week: {{state["current_week"] | default(0)}}
+Cash: ${{state["cash_balance"] | default(0)}}
+Debt: ${{state["total_debt"] | default(0)}}
+Social Score: {{state["social_score"] | default(0)}}
+Credit Rating: {{state["credit_rating"] | default(0)}}
+Locations: {{state["location_count"] | default(0)}}
+Location IDs: {{state["location_ids"] | default([])}}
 Registered Commands: {{registered_commands}}
+current step_idx: {{step_idx}} of 6
+You can iterate up to 6 times per turn.
 
+returned tools this turn:
+{% for t in used_tools | default([]) %}- {{ t.name }}
+{% endfor %}
+
+returned actions this turn:
+{% for a in used_actions | default([]) %}- {{ a.name }}
+{% endfor %}
+
+Notes:
+{{ notes | default("") }}
+if tool calling is unavailable, you must fallback to issuing a Command via eg: <|-ACTIONS-|> Command(NAME): {json payload}. <| -ENDACTIONS-|>
+
+
+only return <| -NOTES- |> and <| -ENDTURN-|> if you have no action to take this turn. and want to end your turn before using all 6 iterations.
+on the sixtjh iteration, you must end your turn with<| -NOTES-|> and <| -ENDTURN-|>
+all <| -NOTES-|> must be concise and relevant to future turns. avoid redundancy. all <| -NOTES-|> are retained for future turns and will be provided to you each turn.
+reason about your actions before taking them.
 What action do you take this turn?
-Remember: output exactly one Command(NAME): {...} then <|-NOTES-|> and <|-ENDTURN-|>.
+Remember: output <|- ACTIONS-|> Command(NAME): {...} then <| -ENDACTIONS-|>
+

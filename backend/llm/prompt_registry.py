@@ -66,17 +66,20 @@ class PromptRegistry:
         return cls._fallback_render(content, kwargs)
 
     @classmethod
-    def get_turn_prompt(cls, template_name: str = "player_turn.j2", **kwargs) -> Optional[str]:
+    def get_turn_prompt(cls, template_name: str = "player_turn.j2", used_tools: list[str] | None = None, used_actions: list[str] | None = None,notes: str | None = None,state: Dict[str, Any] | None = None, **kwargs) -> Optional[str]:
         env = cls._get_env()
         if env is not None:
             try:
                 template = env.get_template(template_name)
-                return template.render(**kwargs)
+                return template.render(used_tools=used_tools, used_actions=used_actions, notes=notes, state=state, **kwargs)
             except Exception:
                 pass
+  
         content = cls._load_template(template_name)
+
         if content is None:
             return None
+        
         return cls._fallback_render(content, kwargs)
 
     @classmethod

@@ -1,0 +1,42 @@
+
+> frontend@0.0.0 dev
+> vite
+
+
+  [32m[1mVITE[22m v7.3.0[39m  [2mready in [0m[1m133[22m[2m[0m ms[22m
+
+  [32mΓ₧£[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m  [32mΓ₧£[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m[32m  Γ₧£[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+X [ERROR] Could not resolve "react-is"
+
+    node_modules/recharts/es6/util/ReactUtils.js:3:27:
+      3 Γöé import { isFragment } from 'react-is';
+        Γò╡                            ~~~~~~~~~~
+
+  You can mark the path "react-is" as external to exclude it from the bundle, which will remove this error and leave the unresolved path in the bundle.
+
+C:\Users\dickdick\gitrepos\lawnedmarked.worktrees\woking\frontend\node_modules\esbuild\lib\main.js:1467
+  let error = new Error(text);
+              ^
+
+Error: Error during dependency optimization:
+
+X [ERROR] Could not resolve "react-is"
+
+    node_modules/recharts/es6/util/ReactUtils.js:3:27:
+      3 Γöé import { isFragment } from 'react-is';
+        Γò╡                            ~~~~~~~~~~
+
+  You can mark the path "react-is" as external to exclude it from the bundle, which will remove this error and leave the unresolved path in the bundle.
+
+
+    at failureErrorWithLog (C:\Users\dickdick\gitrepos\lawnedmarked.worktrees\woking\frontend\node_modules\esbuild\lib\main.js:1467:15)
+    at C:\Users\dickdick\gitrepos\lawnedmarked.worktrees\woking\frontend\node_modules\esbuild\lib\main.js:926:25
+    at C:\Users\dickdick\gitrepos\lawnedmarked.worktrees\woking\frontend\node_modules\esbuild\lib\main.js:1345:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter]
+}
+
+Node.js v24.11.1

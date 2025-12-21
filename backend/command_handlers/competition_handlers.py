@@ -32,15 +32,17 @@ class EnterAllianceHandler(CommandHandler):
         Payload expected:
         {
             "partner_agent_id": str,
-            "alliance_type": str,  # "PriceFixing", "JointMarketing", "ResourceSharing"
-            "alliance_cost": float,
-            "duration_weeks": int
+            "alliance_type": str,  # "INFORMAL", "FORMAL_PARTNERSHIP", etc.
+            "terms": dict
         }
         """
-        partner_agent_id = command.payload.get("partner_agent_id")
-        alliance_type = command.payload.get("alliance_type")
-        alliance_cost = command.payload.get("alliance_cost", 0.0)
-        duration_weeks = command.payload.get("duration_weeks", 52)
+        partner_agent_id = getattr(command.payload, "partner_agent_id", None)
+        alliance_type = getattr(command.payload, "alliance_type", None)
+        terms = getattr(command.payload, "terms", {})
+        
+        # Extract from terms or use defaults
+        alliance_cost = terms.get("cost", 0.0)
+        duration_weeks = terms.get("duration_weeks", 52)
         
         # Validation
         if not partner_agent_id or partner_agent_id == state.agent_id:
@@ -59,9 +61,10 @@ class EnterAllianceHandler(CommandHandler):
             raise InsufficientFundsError(f"Insufficient funds for alliance formation")
         
         # Check for existing alliance with partner
-        for existing in state.active_alliances:
-            if existing.partner_agent_id == partner_agent_id:
-                raise InvalidStateError(f"Already have alliance with {partner_agent_id}")
+        if hasattr(state, "active_alliances"):
+            for existing in state.active_alliances:
+                if existing.partner_agent_id == partner_agent_id:
+                    raise InvalidStateError(f"Already have alliance with {partner_agent_id}")
         
         alliance_id = str(uuid.uuid4())
         
@@ -87,7 +90,7 @@ class EnterAllianceHandler(CommandHandler):
                 agent_id=state.agent_id,
                 timestamp=datetime.now(),
                 week=state.current_week,
-                amount=alliance_cost,
+                amount=-alliance_cost, # Negative for expense
                 transaction_type="EXPENSE",
                 description=f"Alliance formation with {partner_agent_id}",
             )
@@ -106,38 +109,37 @@ class ProposeBuyoutHandler(CommandHandler):
         Payload expected:
         {
             "target_agent_id": str,
-            "offer_price": float,
-            "proposal_cost": float  # Cost to make the proposal
+            "offer_amount": float,
+            "is_hostile_attempt": bool
         }
         """
-        target_agent_id = command.payload.get("target_agent_id")
-        offer_price = command.payload.get("offer_price")
-        proposal_cost = command.payload.get("proposal_cost", 1000.0)
+        target_agent_id = getattr(command.payload, "target_agent_id", None)
+        offer_amount = getattr(command.payload, "offer_amount", None)
+        is_hostile = getattr(command.payload, "is_hostile_attempt", False)
+        
+        # Proposal cost (legal fees, etc.)
+        proposal_cost = 5000.0 if is_hostile else 1000.0
         
         # Validation
         if not target_agent_id or target_agent_id == state.agent_id:
             raise InvalidStateError("Invalid target agent")
         
-        if offer_price <= 0:
-            raise InvalidStateError("Offer price must be positive")
-        
-        if proposal_cost <= 0:
-            raise InvalidStateError("Proposal cost must be positive")
+        if offer_amount <= 0:
+            raise InvalidStateError("Offer amount must be positive")
         
         if state.cash_balance < proposal_cost:
             raise InsufficientFundsError(f"Insufficient funds to make buyout proposal")
         
         # Emit: FundsTransferred (cost of proposal)
-        # Note: Actual acquisition would happen via AcceptBuyoutOffer
         funds_event = FundsTransferred(
             event_id=str(uuid.uuid4()),
             event_type="FundsTransferred",
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=proposal_cost,
+            amount=-proposal_cost,
             transaction_type="EXPENSE",
-            description=f"Buyout proposal: ${offer_price} for {target_agent_id}",
+            description=f"Buyout proposal: ${offer_amount} for {target_agent_id} (Hostile: {is_hostile})",
         )
         
         return [funds_event]
@@ -152,30 +154,26 @@ class AcceptBuyoutOfferHandler(CommandHandler):
         
         Payload expected:
         {
-            "acquiring_agent_id": str,
-            "acquisition_price": float
+            "offer_id": str,
+            "notes": str
         }
         """
-        acquiring_agent_id = command.payload.get("acquiring_agent_id")
-        acquisition_price = command.payload.get("acquisition_price")
+        offer_id = getattr(command.payload, "offer_id", None)
         
-        # Validation
-        if not acquiring_agent_id or acquiring_agent_id == state.agent_id:
-            raise InvalidStateError("Invalid acquiring agent")
+        # In a real system, we'd look up the offer_id to get the price.
+        # For now, we'll assume a placeholder price or that the GM will adjudicate.
+        # But since we need to emit a fact, let's assume it's a valid offer.
         
-        if acquisition_price <= 0:
-            raise InvalidStateError("Acquisition price must be positive")
-        
-        # Emit: FundsTransferred (receiving proceeds from acquisition)
+        # Emit: FundsTransferred (placeholder for now, GM would usually trigger this)
         proceeds_event = FundsTransferred(
             event_id=str(uuid.uuid4()),
             event_type="FundsTransferred",
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=acquisition_price,
+            amount=0.0, # Placeholder
             transaction_type="REVENUE",
-            description=f"Acquisition proceeds from {acquiring_agent_id}",
+            description=f"Accepted buyout offer {offer_id}",
         )
         
         return [proceeds_event]

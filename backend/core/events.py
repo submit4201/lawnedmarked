@@ -5,7 +5,7 @@ This file exposes the base `GameEvent` and re-exports domain events.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict
 from datetime import datetime
 from abc import ABC
 
@@ -31,13 +31,26 @@ class GameEvent(ABC):
             "timestamp": self.timestamp.isoformat(),
             "week": self.week
         }
-from .events_time import TimeAdvanced, GameStarted  # TODO: Add all required symbols explicitly
+
+# Domain event exports
+from .events_time import *
 from .events_financial import *
 from .events_operational import *
 from .events_staffing import *
 from .events_social_regulatory import *
 from .events_vendor import *
 from .events_competition import *
+from .events_competition import *
+
+
+@dataclass(frozen=True)
+class ThoughtBroadcasted(GameEvent):
+    """
+    Emitted when an AI agent generates a thought trace or reasoning step.
+    This allows the frontend 'Neural Feed' to display live agent cognition.
+    """
+    thought_text: str = ""
+    event_type: str = "ThoughtBroadcasted"
 
 
 

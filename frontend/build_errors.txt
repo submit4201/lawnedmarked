@@ -1,0 +1,8 @@
+
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+src/App.tsx(189,18): error TS2304: Cannot find name 'TrendingUp'.
+src/components/CinematicModal.tsx(2,10): error TS1484: 'GameEvent' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/components/CinematicModal.tsx(4,1): error TS6192: All imports in import declaration are unused.
+src/components/TacticalMap.tsx(2,34): error TS6133: 'AlertTriangle' is declared but its value is never read.

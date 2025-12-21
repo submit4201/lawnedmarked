@@ -92,6 +92,12 @@ def extract_command_from_text(text: str) -> CommandExtractionResult:
         payload = m2.group(2).strip()
         return CommandExtractionResult(command_name=name, payload_json=payload, notes=extracted_notes)
 
+    m3 = re.search(r"<\|\-ACTIONS\-\|>\s*([A-Za-z0-9_]+)\s*:\s*(\{.*\})", text, re.S)
+    if m3:
+        name = m3.group(1).strip()
+        payload = m3.group(2).strip()
+        return CommandExtractionResult(command_name=name, payload_json=payload, notes=extracted_notes)
+
     # Fallback: try to parse entire text as JSON with `command_name` and `payload`
     try:
         data = json.loads(text)

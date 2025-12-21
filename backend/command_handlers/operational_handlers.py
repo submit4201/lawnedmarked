@@ -34,59 +34,72 @@ import uuid
 class BuyEquipmentHandler(CommandHandler):
     """Handler for BUY_EQUIPMENT command."""
     
+    EQUIPMENT_PRICES = {
+        "StandardWasher": 1500.0,
+        "IndustrialWasher": 3500.0,
+        "DeluxeWasher": 2500.0,
+        "Dryer": 1200.0,
+        "VendingMachine": 800.0
+    }
+    
     def handle(self, state: AgentState, command: BuyEquipmentCommand) -> List[GameEvent]:
         """
         Validate and process equipment purchase.
-        
-        Payload expected:
-        {
-            "location_id": str,
-            "machine_type": str,  # e.g., "StandardWasher", "Dryer"
-            "purchase_price": float
-        }
         """
-        location_id = command.payload.get("location_id")
-        machine_type = command.payload.get("machine_type")
-        purchase_price = command.payload.get("purchase_price")
+        from core.command_payloads import BuyEquipmentPayload
+        payload: BuyEquipmentPayload = command.payload
+        location_id = payload.location_id
+        equipment_type = payload.equipment_type
+        vendor_id = payload.vendor_id
+        quantity = payload.quantity
         
         # Validation
+        if not location_id:
+            raise InvalidStateError("Location ID is required for equipment purchase")
+            
         if location_id not in state.locations:
             raise LocationNotFoundError(f"Location {location_id} not found")
         
-        if purchase_price <= 0:
-            raise InvalidStateError("Purchase price must be positive")
+        if quantity <= 0:
+            raise InvalidStateError("Quantity must be positive")
         
-        if state.cash_balance < purchase_price:
-            raise InsufficientFundsError(f"Insufficient funds: need ${purchase_price}, have ${state.cash_balance}")
+        price_per_unit = self.EQUIPMENT_PRICES.get(equipment_type, 2000.0)
+        total_price = price_per_unit * quantity
         
-        # Create machine ID
-        machine_id = str(uuid.uuid4())
+        if state.cash_balance < total_price:
+            raise InsufficientFundsError(f"Insufficient funds: need ${total_price}, have ${state.cash_balance}")
         
-        # Emit: EquipmentPurchased + FundsTransferred
-        purchase_event = EquipmentPurchased(
-            event_id=str(uuid.uuid4()),
-            event_type="EquipmentPurchased",
-            agent_id=state.agent_id,
-            timestamp=datetime.now(),
-            week=state.current_week,
-            location_id=location_id,
-            machine_id=machine_id,
-            machine_type=machine_type,
-            purchase_price=purchase_price,
-        )
+        events = []
+        for _ in range(quantity):
+            # Create machine ID
+            machine_id = str(uuid.uuid4())
+            
+            # Emit: EquipmentPurchased
+            events.append(EquipmentPurchased(
+                event_id=str(uuid.uuid4()),
+                event_type="EquipmentPurchased",
+                agent_id=state.agent_id,
+                timestamp=datetime.now(),
+                week=state.current_week,
+                location_id=location_id,
+                machine_id=machine_id,
+                machine_type=equipment_type,
+                purchase_price=price_per_unit,
+            ))
         
-        funds_event = FundsTransferred(
+        # Emit: FundsTransferred
+        events.append(FundsTransferred(
             event_id=str(uuid.uuid4()),
             event_type="FundsTransferred",
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=purchase_price,
+            amount=-total_price,
             transaction_type="EXPENSE",
-            description=f"Equipment purchase: {machine_type} at {location_id}",
-        )
+            description=f"Equipment purchase: {quantity}x {equipment_type} at {location_id} from {vendor_id}",
+        ))
         
-        return [purchase_event, funds_event]
+        return events
 
 
 class SellEquipmentHandler(CommandHandler):
@@ -95,17 +108,12 @@ class SellEquipmentHandler(CommandHandler):
     def handle(self, state: AgentState, command: SellEquipmentCommand) -> List[GameEvent]:
         """
         Validate and process equipment sale.
-        
-        Payload expected:
-        {
-            "location_id": str,
-            "machine_id": str,
-            "sale_price": float
-        }
         """
-        location_id = command.payload.get("location_id")
-        machine_id = command.payload.get("machine_id")
-        sale_price = command.payload.get("sale_price")
+        from core.command_payloads import SellEquipmentPayload
+        payload: SellEquipmentPayload = command.payload
+        location_id = payload.location_id
+        machine_id = payload.machine_id
+        sale_price = payload.sale_price
         
         # Validation
         if location_id not in state.locations:
@@ -147,96 +155,125 @@ class SellEquipmentHandler(CommandHandler):
 class PerformMaintenanceHandler(CommandHandler):
     """Handler for PERFORM_MAINTENANCE command."""
     
+    MAINTENANCE_COSTS = {
+        "ROUTINE": 50.0,
+        "DEEP_SERVICE": 150.0,
+        "OVERHAUL": 500.0,
+        "PREMISES_CLEANING": 100.0
+    }
+    
     def handle(self, state: AgentState, command: PerformMaintenanceCommand) -> List[GameEvent]:
         """
         Validate and process maintenance request.
-        
-        Payload expected:
-        {
-            "location_id": str,
-            "machine_id": str,
-            "maintenance_type": str,  # "Routine", "Deep", "Overhaul"
-            "cost": float
-        }
         """
-        location_id = command.payload.get("location_id")
-        machine_id = command.payload.get("machine_id")
-        maintenance_type = command.payload.get("maintenance_type", "Routine")
-        cost = command.payload.get("cost")
+        from core.command_payloads import PerformMaintenancePayload
+        payload: PerformMaintenancePayload = command.payload
+        location_id = payload.location_id
+        maintenance_type = payload.maintenance_type
+        equipment_ids = payload.equipment_ids
         
         # Validation
         if location_id not in state.locations:
             raise LocationNotFoundError(f"Location {location_id} not found")
         
         location = state.locations[location_id]
-        if machine_id not in location.equipment:
-            raise InvalidStateError(f"Machine {machine_id} not found")
         
-        if cost <= 0:
-            raise InvalidStateError("Maintenance cost must be positive")
+        # If it's premises cleaning, it doesn't need equipment_ids
+        if maintenance_type == "PREMISES_CLEANING":
+            cost = self.MAINTENANCE_COSTS["PREMISES_CLEANING"]
+            if state.cash_balance < cost:
+                raise InsufficientFundsError(f"Insufficient funds for premises cleaning")
+            
+            # For now, we don't have a specific event for premises cleaning, 
+            # but we can emit a FundsTransferred and maybe a custom event later.
+            funds_event = FundsTransferred(
+                event_id=str(uuid.uuid4()),
+                event_type="FundsTransferred",
+                agent_id=state.agent_id,
+                timestamp=datetime.now(),
+                week=state.current_week,
+                amount=-cost,
+                transaction_type="EXPENSE",
+                description=f"Premises cleaning at {location_id}",
+            )
+            return [funds_event]
+
+        # For equipment maintenance
+        if not equipment_ids:
+            raise InvalidStateError("Equipment IDs are required for machine maintenance")
         
-        if state.cash_balance < cost:
-            raise InsufficientFundsError(f"Insufficient funds for maintenance")
+        events = []
+        total_cost = 0
+        cost_per_unit = self.MAINTENANCE_COSTS.get(maintenance_type, 50.0)
         
-        # Emit: EquipmentRepaired + FundsTransferred
-        repair_event = EquipmentRepaired(
-            event_id=str(uuid.uuid4()),
-            event_type="EquipmentRepaired",
-            agent_id=state.agent_id,
-            timestamp=datetime.now(),
-            week=state.current_week,
-            location_id=location_id,
-            machine_id=machine_id,
-            maintenance_type=maintenance_type,
-            maintenance_cost=cost,
-            new_condition=100.0,
-        )
+        for machine_id in equipment_ids:
+            if machine_id not in location.equipment:
+                raise InvalidStateError(f"Machine {machine_id} not found at {location_id}")
+            
+            total_cost += cost_per_unit
+            
+            # Emit: EquipmentRepaired
+            events.append(EquipmentRepaired(
+                event_id=str(uuid.uuid4()),
+                event_type="EquipmentRepaired",
+                agent_id=state.agent_id,
+                timestamp=datetime.now(),
+                week=state.current_week,
+                location_id=location_id,
+                machine_id=machine_id,
+                maintenance_type=maintenance_type,
+                maintenance_cost=cost_per_unit,
+                new_condition=100.0,
+            ))
         
-        funds_event = FundsTransferred(
+        if state.cash_balance < total_cost:
+            raise InsufficientFundsError(f"Insufficient funds for maintenance: need ${total_cost}")
+        
+        # Emit: FundsTransferred
+        events.append(FundsTransferred(
             event_id=str(uuid.uuid4()),
             event_type="FundsTransferred",
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=cost,
+            amount=-total_cost,
             transaction_type="EXPENSE",
-            description=f"Maintenance {maintenance_type}: {machine_id} at {location_id}",
-        )
+            description=f"Maintenance {maintenance_type} for {len(equipment_ids)} machines at {location_id}",
+        ))
         
-        return [repair_event, funds_event]
+        return events
 
 
 class BuySuppliesHandler(CommandHandler):
     """Handler for BUY_SUPPLIES command."""
     
+    SUPPLY_PRICES = {
+        "detergent": 0.50,  # per load
+        "softener": 0.30,   # per load
+    }
+    
     def handle(self, state: AgentState, command: BuySuppliesCommand) -> List[GameEvent]:
         """
         Validate and process supplies purchase.
-        
-        Payload expected:
-        {
-            "location_id": str,
-            "supply_type": str,  # "detergent", "softener"
-            "quantity": int,
-            "cost": float
-        }
         """
-        location_id = command.payload.get("location_id")
-        supply_type = command.payload.get("supply_type")
-        quantity = command.payload.get("quantity")
-        cost = command.payload.get("cost")
+        from core.command_payloads import BuySuppliesPayload
+        payload: BuySuppliesPayload = command.payload
+        location_id = payload.location_id
+        supply_type = payload.supply_type
+        vendor_id = payload.vendor_id
+        quantity_loads = payload.quantity_loads
         
         # Validation
         if location_id not in state.locations:
             raise LocationNotFoundError(f"Location {location_id} not found")
         
-        if quantity <= 0:
+        if quantity_loads <= 0:
             raise InvalidStateError("Quantity must be positive")
         
-        if cost <= 0:
-            raise InvalidStateError("Cost must be positive")
+        price_per_load = self.SUPPLY_PRICES.get(supply_type, 0.40)
+        total_cost = price_per_load * quantity_loads
         
-        if state.cash_balance < cost:
+        if state.cash_balance < total_cost:
             raise InsufficientFundsError(f"Insufficient funds for supplies")
         
         # Emit: SuppliesAcquired + FundsTransferred
@@ -248,8 +285,8 @@ class BuySuppliesHandler(CommandHandler):
             week=state.current_week,
             location_id=location_id,
             supply_type=supply_type,
-            quantity=quantity,
-            cost=cost,
+            quantity=quantity_loads,
+            cost=total_cost,
         )
         
         funds_event = FundsTransferred(
@@ -258,9 +295,9 @@ class BuySuppliesHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=cost,
+            amount=-total_cost,
             transaction_type="EXPENSE",
-            description=f"Supplies purchase: {quantity} units of {supply_type}",
+            description=f"Supplies purchase: {quantity_loads} loads of {supply_type} at {location_id} from {vendor_id}",
         )
         
         return [supply_event, funds_event]
@@ -272,17 +309,15 @@ class OpenNewLocationHandler(CommandHandler):
     def handle(self, state: AgentState, command: OpenNewLocationCommand) -> List[GameEvent]:
         """
         Validate and process new location opening.
-        
-        Payload expected:
-        {
-            "zone": str,
-            "monthly_rent": float,
-            "setup_cost": float
-        }
+        Agent must purchase from available listings.
         """
-        zone = command.payload.get("zone")
-        monthly_rent = command.payload.get("monthly_rent")
-        setup_cost = command.payload.get("setup_cost")
+        from core.command_payloads import OpenNewLocationPayload
+        from core.events import LocationListingRemoved
+        
+        payload: OpenNewLocationPayload = command.payload
+        zone = payload.zone
+        monthly_rent = payload.monthly_rent
+        setup_cost = payload.setup_cost
         
         # Validation
         if not zone:
@@ -296,8 +331,9 @@ class OpenNewLocationHandler(CommandHandler):
             raise InsufficientFundsError(f"Insufficient funds for location setup")
         
         location_id = str(uuid.uuid4())
+        events = []
         
-        # Emit: NewLocationOpened + FundsTransferred
+        # Emit: NewLocationOpened
         location_event = NewLocationOpened(
             event_id=str(uuid.uuid4()),
             event_type="NewLocationOpened",
@@ -307,20 +343,24 @@ class OpenNewLocationHandler(CommandHandler):
             location_id=location_id,
             zone=zone,
             monthly_rent=monthly_rent,
+            initial_investment=setup_cost,
         )
+        events.append(location_event)
         
+        # Emit: FundsTransferred for setup cost
         funds_event = FundsTransferred(
             event_id=str(uuid.uuid4()),
             event_type="FundsTransferred",
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=setup_cost,
+            amount=-setup_cost,
             transaction_type="EXPENSE",
             description=f"New location setup: {zone}",
         )
+        events.append(funds_event)
         
-        return [location_event, funds_event]
+        return events
 
 
 class FixMachineHandler(CommandHandler):
@@ -329,17 +369,12 @@ class FixMachineHandler(CommandHandler):
     def handle(self, state: AgentState, command: FixMachineCommand) -> List[GameEvent]:
         """
         Validate and process emergency machine repair.
-        
-        Payload expected:
-        {
-            "location_id": str,
-            "machine_id": str,
-            "repair_cost": float
-        }
         """
-        location_id = command.payload.get("location_id")
-        machine_id = command.payload.get("machine_id")
-        repair_cost = command.payload.get("repair_cost")
+        from core.command_payloads import FixMachinePayload
+        payload: FixMachinePayload = command.payload
+        location_id = payload.location_id
+        machine_id = payload.machine_id
+        repair_cost = payload.maintenance_cost
         
         # Validation
         if location_id not in state.locations:
@@ -374,7 +409,7 @@ class FixMachineHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=repair_cost,
+            amount=-repair_cost,
             transaction_type="EXPENSE",
             description=f"Emergency repair: {machine_id} at {location_id}",
         )

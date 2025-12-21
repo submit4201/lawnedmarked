@@ -102,6 +102,7 @@ from .commands_staffing import (
     ProvideBenefitsCommand,
 )
 from .commands_social_regulatory import (
+    CommunicateToAgentCommand,
     InitiateCharityCommand,
     ResolveScandalCommand,
     FileRegulatoryReportCommand,
@@ -158,6 +159,7 @@ __all__ = [
     "AdjustStaffWageCommand",
     "ProvideBenefitsCommand",
     # Social/Regulatory
+    "CommunicateToAgentCommand",
     "InitiateCharityCommand",
     "ResolveScandalCommand",
     "FileRegulatoryReportCommand",

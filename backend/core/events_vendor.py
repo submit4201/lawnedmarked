@@ -23,6 +23,13 @@ class VendorPriceFluctuated(GameEvent):
     event_type: str = field(default="VendorPriceFluctuated")
 
 @dataclass(frozen=True)
+class VendorNegotiationInitiated(GameEvent):
+    location_id: str = ""
+    vendor_id: str = ""
+    proposal: str = ""
+    event_type: str = field(default="VendorNegotiationInitiated")
+
+@dataclass(frozen=True)
 class VendorNegotiationResult(GameEvent):
     location_id: str = ""
     vendor_id: str = ""
@@ -65,6 +72,7 @@ __all__ = [
     "VendorTierPromoted",
     "VendorTierDemoted",
     "VendorPriceFluctuated",
+    "VendorNegotiationInitiated",
     "VendorNegotiationResult",
     "ExclusiveContractSigned",
     "DeliveryDisruption",
