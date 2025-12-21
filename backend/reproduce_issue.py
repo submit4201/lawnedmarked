@@ -1,7 +1,6 @@
 
 import os
 import sys
-import asyncio
 # Make sure we can import from backend
 sys.path.append(os.getcwd())
 

@@ -71,12 +71,14 @@ class GeminiProvider(LLMProviderBase):
         if "temperature" in extra:
             try:
                 generation_config["temperature"] = float(extra.get("temperature"))
-            except Exception:
+            except (TypeError, ValueError):
+                # If temperature cannot be parsed as float, skip it
                 pass
         if "max_output_tokens" in extra:
             try:
                 generation_config["maxOutputTokens"] = int(extra.get("max_output_tokens"))
-            except Exception:
+            except (TypeError, ValueError):
+                # If max_output_tokens cannot be parsed as int, skip it
                 pass
         if generation_config:
             payload["generationConfig"] = generation_config

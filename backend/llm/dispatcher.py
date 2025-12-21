@@ -45,9 +45,200 @@ class LLMDispatcher:
         self.command_executor = command_executor
         self.game_engine = game_engine
         self.provider: LLMProvider = None  # type: ignore # set in _get_provider_for_agent
-        self.logger = TurnLogger()
 
-    # --- Tool Classification Helpers ---
+    def _extract_thought(self, content: str) -> str:
+        import re
+
+        if not content:
+            return ""
+        # Try to find everything after <|-THOUGHT-|> until the next tag or end of string
+        m = re.search(r"<\|\-THOUGHT\-\|>\s*(.*?)\s*(?:<\|-|$)", content, re.S)
+        if m:
+            return m.group(1).strip()
+        
+        # Fallback: if no tag, just return the first 500 chars
+        return content.strip()[:500]
+    
+    def _extract_actions(self, content: str) -> str:
+        '''extract the actions section from the content
+        <|-ACTIONS-|> ... <|-ENDACTIONS-|>
+        and extract commands from inside it.
+        Commands are in the format:
+        Command(NAME): {json payload} 
+        '''
+        import re
+        if not content:
+            return ""
+        m = re.search(r"<\|\-ACTIONS\-\|>\s*(.*?)\s*<\|\-ENDACTIONS\-\|>", content, re.S)
+        if m:
+            # extract commands from m group 1 Command(NAME): {json payload}
+            # we want to return a list of (cammand_name, payload_json) tuples
+            actions_content = m.group(1).strip()
+            command_pattern = re.compile(r"Command\((.*?)\):\s*(\{.*?\})", re.S)
+            commands = command_pattern.findall(actions_content)
+            for i in range(len(commands)):
+                command_name = commands[i][0].strip()
+                payload_json = commands[i][1].strip()
+                commands[i] = (command_name, payload_json)
+                print(f"Extracted command: {command_name} with payload: {payload_json}")
+            return commands
+        
+        return []
+    
+    def _extract_notes(self, content: str) -> str:
+        import re
+
+        if not content:
+            return ""
+        # Match <|-NOTES-|> and everything after it, but stop if we see <|-ENDNOTES-|> or <|-ENDTURN-|>
+        m = re.search(
+            r"<\|\-NOTES\-\|>\s*(.*?)(?:\s*<\|\-ENDNOTES\-\|>|\s*<\|\-ENDTURN-|>|$)",
+            content,
+            re.S,
+        )
+        if m:
+            return m.group(1).strip()
+        return ""
+            
+    def _extract_tool_calls_from_text(self, text: str) -> list[dict]:
+        """Extract <tool_call> tags from text and convert to OpenAI-style tool_calls."""
+        import re
+        import uuid
+        
+        calls = []
+        # Match <tool_call> ... </tool_call> or <tool_call> ... (if tag is not closed)
+        # We use a more robust pattern that captures everything between tags.
+        pattern = r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|$)"
+        matches = re.finditer(pattern, text, re.S)
+        
+        for m in matches:
+            try:
+                raw_content = m.group(1).strip()
+                # Remove markdown code blocks if present
+                if raw_content.startswith("```"):
+                    raw_content = re.sub(r"^```(?:json)?\n", "", raw_content)
+                    raw_content = re.sub(r"\n```$", "", raw_content)
+                
+                # Try to find the first { and last } to extract JSON
+                start = raw_content.find("{")
+                end = raw_content.rfind("}")
+                if start != -1 and end != -1:
+                    json_str = raw_content[start:end+1]
+                    
+                    # Handle escaped JSON if the LLM wrapped it in a string
+                    if "\\\"" in json_str:
+                        try:
+                            # Try to unescape by loading as a string first if it's wrapped in quotes
+                            if raw_content.startswith("\"") and raw_content.endswith("\""):
+                                json_str = json.loads(raw_content)
+                            else:
+                                # Manual unescape for common cases
+                                json_str = json_str.replace("\\\"", "\"").replace("\\\\", "\\")
+                        except Exception:
+                            # If unescaping fails, fall back to the original JSON substring
+                            pass
+
+                    data = json.loads(json_str)
+                    name = data.get("name")
+                    args = data.get("arguments") or {}
+                    if name:
+                        calls.append({
+                            "id": f"call_{uuid.uuid4().hex[:8]}",
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": json.dumps(args) if isinstance(args, dict) else str(args)
+                            }
+                        })
+            except Exception as e:
+                print(f"[LLM] Error parsing tool call: {e}")
+                continue
+        return calls
+
+    def _log_to_markdown(self, agent_id: str, step_idx: int, content: str, tool_calls: list = None, tool_results: list = None, command_extraction: Any = None):
+        """Log the turn step to a markdown file for debugging."""
+        import re
+        from datetime import datetime
+        
+        # Use absolute path relative to this file to avoid CWD issues
+        log_dir = Path(__file__).resolve().parent.parent / "logs" / "turns"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        filename = f"{date_str}_{agent_id}.md"
+        filepath = log_dir / filename
+        
+        with open(filepath, "a", encoding="utf-8") as f:
+            if step_idx == 0:
+                f.write(f"\n---\n# Turn Log: {agent_id} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+            fwrite = f.write
+            fwrite(f"---\n## Step {step_idx + 1}\n\n")
+            
+            # Raw Response
+            fwrite("### Raw Response\n\n")
+            fwrite(f"```\n{content}\n```\n\n")
+
+            # Sections
+            patterns = [
+                ("Thought", r"<\|-THOUGHT-\|>(.*?)(?=<\|-|$)"),
+                ("Action Plan", r"<\|-ACTION PLAN-\|>(.*?)(?=<\|-|$)"),
+                ("Checks", r"<\|-CHECKS-\|>(.*?)(?=<\|-|$)"),
+                ("Command", r"<\|-COMMAND-\|>(.*?)(?=<\|-|$)"),
+                ("Notes", r"<\|-NOTES-\|>(.*?)(?=<\|-|$)"),
+            ]
+            
+            found_sections = False
+            for title, pattern in patterns:
+                match = re.search(pattern, content, re.S)
+                if match:
+                    text = match.group(1).strip()
+                    if text:
+                        f.write(f"### {title}\n{text}\n\n")
+                        found_sections = True
+            
+            if tool_calls:
+                f.write("### Tool Calls\n")
+                for call in tool_calls:
+                    if isinstance(call, dict):
+                        name = call.get("function", {}).get("name")
+                        args = call.get("function", {}).get("arguments")
+                    else:
+                        name = getattr(getattr(call, "function", {}), "name", "unknown")
+                        args = getattr(getattr(call, "function", {}), "arguments", "{}")
+                    f.write(f"- **{name}**\n")
+                    f.write(f"  ```json\n{args}\n  ```\n")
+                f.write("\n")
+                found_sections = True
+
+            if command_extraction and command_extraction.command_name:
+                f.write(f"### Extracted Command (Text Fallback)\n")
+                f.write(f"- **{command_extraction.command_name}**\n")
+                f.write(f"  ```json\n{command_extraction.payload_json}\n  ```\n\n")
+                found_sections = True
+
+            if not found_sections and content.strip():
+                if content.strip() != "Executing tool calls...":
+                    f.write(f"### Raw Response\n{content.strip()}\n\n")
+            
+            if tool_results:
+                f.write("### Tool Results\n")
+                for res in tool_results:
+                    name = res.get("name")
+                    out = res.get("content")
+                    if len(out) > 2000:
+                        out = out[:2000] + "... (truncated)"
+                    f.write(f"#### {name}\n{out}\n\n")
+
+            f.write("---\n")
+
+    def _wants_end_turn(self, content: str, tool_name: str | None) -> bool:
+        if tool_name == "end_of_turn":
+            return True
+        import re
+        # Robust check for end turn tag, allowing for common typos like } instead of >
+        return bool(re.search(r"<\|\-ENDTURN\-[\|>\}]", content or ""))
+
     def _tool_is_info(self, name: str) -> bool:
         return name in {"tool_help", "get_history", "get_state", "get_inventory"}
 
@@ -177,10 +368,12 @@ class LLMDispatcher:
 
         tool_names = []
         for t in tools or []:
-            try:
-                tool_names.append(((t or {}).get("function") or {}).get("name"))
-            except Exception:
-                pass
+            name = None
+            if isinstance(t, dict):
+                function = t.get("function")
+                if isinstance(function, dict):
+                    name = function.get("name")
+            tool_names.append(name)
 
         self._audit(
             {

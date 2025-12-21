@@ -76,27 +76,29 @@ def cleanup_logs():
     
     for service_dir in LOG_ROOT.iterdir():
         if service_dir.is_dir() and service_dir.name != "README.md":
-            _archive_service_logs(service_dir, today_str)
-
-
-def _archive_service_logs(service_dir: Path, today_str: str):
-    logs_to_zip = []
-    for log_file in service_dir.glob("*.log"):
-        # Check if file name contains today's date. If NOT, zip it.
-        if today_str not in log_file.name:
-            logs_to_zip.append(log_file)
-    
-    if logs_to_zip:
-        zip_name = service_dir / f"archive-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.zip"
-        try:
-            with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for log in logs_to_zip:
-                    zipf.write(log, log.name)
+            # List all log files
+            logs_to_zip = []
+            for log_file in service_dir.glob("*.log"):
+                # Check if file name contains today's date. If NOT, zip it.
+                if today_str not in log_file.name:
+                    logs_to_zip.append(log_file)
             
-            # Uncomment to enable deletion after zipping
-            # for log in logs_to_zip:
-            #     os.remove(log)
-                
-            print(f"[LOG_CLEANUP] Archived {len(logs_to_zip)} logs to {zip_name}")
-        except Exception as e:
-            print(f"[LOG_CLEANUP] Error archiving logs in {service_dir}: {e}")
+            if logs_to_zip:
+                zip_name = service_dir / f"archive-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}.zip"
+                try:
+                    with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for log in logs_to_zip:
+                            zipf.write(log, log.name)
+
+                    # Note: In production you may wish to delete the original log files
+                    # after successful archiving to conserve disk space. If you enable
+                    # such behavior, ensure it only runs once per file and handles
+                    # errors robustly.
+                    archived_count += len(logs_to_zip)
+                    print(f"[LOG_CLEANUP] Archived {len(logs_to_zip)} logs to {zip_name}")
+                except Exception as e:
+                    print(f"[LOG_CLEANUP] Error archiving logs in {service_dir}: {e}")
+    
+    if archived_count > 0:
+        print(f"[LOG_CLEANUP] Total: {archived_count} log files archived")
+

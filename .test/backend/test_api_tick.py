@@ -1,6 +1,5 @@
 import asyncio
 import httpx
-import sys
 
 async def run_test():
     print("[TEST] Starting test...")

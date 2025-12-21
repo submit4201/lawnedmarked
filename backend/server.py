@@ -9,7 +9,6 @@ Endpoints
 """
 
 from datetime import datetime
-import json
 import time
 from typing import List, Optional
 import uuid
@@ -100,7 +99,8 @@ async def get_history(
             n = int(limit)
             if n > 0:
                 events = events[-n:]
-        except Exception:
+        except (TypeError, ValueError):
+            # If limit cannot be parsed as a positive integer, ignore it and return all events.
             pass
     return {"agent_id": agent_id, "events": [_to_serializable(e) for e in events]}
 

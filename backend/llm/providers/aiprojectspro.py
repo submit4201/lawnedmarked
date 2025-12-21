@@ -49,9 +49,8 @@ class AzureAIProjectsProvider(LLMProviderBase):
             self._agent = None
 
         self._openai_client = self._client.get_openai_client()
-
             
-    def _create_agent_version(self, tools: Optional[list[dict]] = None):
+    def _create_agent(self, tools: Optional[list[dict]] = None):
         azure_tools = []
         if tools:
             for ts in tools:
