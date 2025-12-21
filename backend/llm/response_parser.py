@@ -113,3 +113,17 @@ class ResponseParser:
                 print(f"[LLM] Error parsing tool call: {e}")
                 continue
         return calls
+
+    @staticmethod
+    def is_info_tool(name: str) -> bool:
+        return name in {"tool_help", "get_history", "get_state", "get_inventory"}
+
+    @staticmethod
+    def is_session_tool(name: str) -> bool:
+        return name in {"end_of_turn"}
+    
+    @staticmethod
+    def is_command_tool(name: str) -> bool:
+        # Avoid circular import by checking against known info/session tools
+        # Ideally we check against registry but this is a helper for now
+        return not (ResponseParser.is_info_tool(name) or ResponseParser.is_session_tool(name))

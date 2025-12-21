@@ -47,24 +47,6 @@ class GeminiProvider(LLMProviderBase):
         return self._parse_response(data)
 
     def _build_payload(self, messages: list[dict], tools: Optional[list[dict]]) -> Dict[str, Any]:
-        system_instruction, contents = _openai_messages_to_gemini(messages)
-        gemini_tools = _openai_tools_to_gemini(tools)
-
-        payload: Dict[str, Any] = {
-            "contents": contents,
-        }
-        if system_instruction:
-            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-        if gemini_tools:
-            payload["tools"] = gemini_tools
-
-        # Map some common generation options from config/extra.
-        extra = getattr(self.config, "extra", {}) or {}
-        generation_config: Dict[str, Any] = {}
-        if "temperature" in extra:
-            try:
-                generation_config["temperature"] = float(extra.get("temperature"))
-            except (TypeError, ValueError):
                 # If temperature cannot be parsed as float, skip it
                 pass
         if "max_output_tokens" in extra:
@@ -126,56 +108,6 @@ def _openai_tools_to_gemini(tools: Optional[List[Dict[str, Any]]]) -> Optional[L
         return None
     decls: List[Dict[str, Any]] = []
     for t in tools:
-        if not isinstance(t, dict):
-            continue
-        if t.get("type") != "function":
-            continue
-        fn = t.get("function") or {}
-        name = fn.get("name")
-        if not name:
-            continue
-        decls.append(
-            {
-                "name": name,
-                "description": fn.get("description", "") or "",
-                "parameters": fn.get("parameters", {"type": "object"}) or {"type": "object"},
-            }
-        )
-    if not decls:
-        return None
-    return [{"functionDeclarations": decls}]
-
-
-def _openai_messages_to_gemini(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
-    system_parts: List[str] = []
-    contents: List[Dict[str, Any]] = []
-
-    for m in messages or []:
-        role = (m.get("role") or "").strip().lower()
-        content = m.get("content")
-        if content is None:
-            content = ""
-        if not isinstance(content, str):
-            content = json.dumps(content, default=str)
-
-        if role == "system":
-            if content.strip():
-                system_parts.append(content.strip())
-            continue
-
-        if role == "assistant":
-            g_role = "model"
-        elif role == "user":
-            g_role = "user"
-        elif role == "tool":
-            # Gemini supports function responses, but our runtime uses OpenAI-style tool
-            # messages. Treat as user-visible observation.
-            tool_name = m.get("name")
-            prefix = f"TOOL_RESULT({tool_name}): " if tool_name else "TOOL_RESULT: "
-            content = prefix + content
-            g_role = "user"
-        else:
-            # Fallback: treat unknown roles as user content.
             g_role = "user"
 
         contents.append({"role": g_role, "parts": [{"text": content}]})

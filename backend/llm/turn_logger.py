@@ -84,3 +84,18 @@ class TurnLogger:
                     f.write(f"#### {name}\n{out}\n\n")
 
             f.write("---\n")
+
+    def log_console(self, step_idx: int, tool_calls: list):
+        """Log tool calls to console (stdout)."""
+        print(f"\n--- TOOL CALLS (Step {step_idx+1}) ---")
+        for call in tool_calls:
+            if isinstance(call, dict):
+                fn = call.get("function") or {}
+                t_name = fn.get("name")
+                t_args = fn.get("arguments")
+            else:
+                t_name = getattr(getattr(call, "function", {}), "name", "unknown")
+                t_args = getattr(getattr(call, "function", {}), "arguments", "{}")
+            print(f"Tool: `{t_name}`")
+            print(f"Args: ```json\n{t_args}\n```")
+        print("-----------------------------------\n")

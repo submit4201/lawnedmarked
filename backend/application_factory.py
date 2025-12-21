@@ -237,72 +237,73 @@ class ApplicationFactory:
                  provider_map["azure_openai"] = p2
 
     @staticmethod
+    def _handle_api_request(game_engine: GameEngine, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if action == "GET_STATE":
+            agent_id = payload.get("agent_id", "")
+            state = game_engine.get_current_state(agent_id)
+            serial = _to_serializable(state)
+            return {"agent_state": serial, "locations": serial.get("locations", {})}
+
+        if action == "GET_HISTORY":
+            agent_id = payload.get("agent_id", "")
+            last_event_id = payload.get("last_event_id")
+            limit = payload.get("limit")
+            events = game_engine.get_event_log(agent_id)
+            if last_event_id:
+                try:
+                    idx = next(
+                        i for i, e in enumerate(events) if getattr(e, "event_id", None) == last_event_id
+                    )
+                    events = events[idx + 1 :]
+                except StopIteration:
+                    events = []
+            if limit is not None:
+                try:
+                    n = int(limit)
+                    if n > 0:
+                        events = events[-n:]
+                except (TypeError, ValueError):
+                    pass
+            return {"new_events": [_to_serializable(e) for e in events]}
+
+        if action == "SUBMIT_COMMAND":
+            from llm_factory import LLMCommandFactory
+
+            agent_id = payload.get("agent_id", "")
+            command_name = payload.get("command_name", "")
+            cmd_payload = dict(payload.get("payload", {}) or {})
+            cmd_payload.pop("agent_id", None)
+            cmd_payload.pop("command_name", None)
+            
+            command = LLMCommandFactory.from_llm(
+                agent_id=agent_id,
+                command_name=command_name,
+                **cmd_payload,
+            )
+            success, events, message = game_engine.execute_command(agent_id, command)
+            return {"success": success, "events_emitted": len(events), "message": message}
+
+        if action == "END_OF_TURN":
+            from core.events_social_regulatory import EndOfTurnNotesSaved
+
+            agent_id = payload.get("agent_id", "")
+            notes = str(payload.get("notes", ""))
+            note_evt = EndOfTurnNotesSaved(
+                event_id=f"NOTES_{agent_id}_{int(datetime.now().timestamp())}",
+                agent_id=agent_id,
+                timestamp=datetime.now(),
+                week=game_engine.get_current_state(agent_id).current_week,
+                notes=notes,
+            )
+            game_engine.event_repository.save(note_evt)
+            return {"ok": True}
+
+        return {"error": f"Unknown api_client action {action}"}
+
+    @staticmethod
     def _create_api_client(game_engine: GameEngine) -> Any:
         def api_client(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-            if action == "GET_STATE":
-                agent_id = payload.get("agent_id", "")
-                state = game_engine.get_current_state(agent_id)
-                serial = _to_serializable(state)
-                return {"agent_state": serial, "locations": serial.get("locations", {})}
-
-            if action == "GET_HISTORY":
-                agent_id = payload.get("agent_id", "")
-                last_event_id = payload.get("last_event_id")
-                limit = payload.get("limit")
-                events = game_engine.get_event_log(agent_id)
-                if last_event_id:
-                    try:
-                        idx = next(
-                            i for i, e in enumerate(events) if getattr(e, "event_id", None) == last_event_id
-                        )
-                        events = events[idx + 1 :]
-                    except StopIteration:
-                        events = []
-                # If no last_event_id was provided, allow returning only the last N events.
-                if limit is not None:
-                    try:
-                        n = int(limit)
-                        if n > 0:
-                            events = events[-n:]
-                    except (TypeError, ValueError):
-                        # If limit cannot be parsed as a positive integer, ignore it and return all events.
-                        pass
-                return {"new_events": [_to_serializable(e) for e in events]}
-
-            if action == "SUBMIT_COMMAND":
-                from llm_factory import LLMCommandFactory
-
-                agent_id = payload.get("agent_id", "")
-                command_name = payload.get("command_name", "")
-                cmd_payload = dict(payload.get("payload", {}) or {})
-                # Remove agent_id and command_name from payload if present to avoid multiple values error
-                cmd_payload.pop("agent_id", None)
-                cmd_payload.pop("command_name", None)
-                
-                command = LLMCommandFactory.from_llm(
-                    agent_id=agent_id,
-                    command_name=command_name,
-                    **cmd_payload,
-                )
-                success, events, message = game_engine.execute_command(agent_id, command)
-                return {"success": success, "events_emitted": len(events), "message": message}
-
-            if action == "END_OF_TURN":
-                from core.events_social_regulatory import EndOfTurnNotesSaved
-
-                agent_id = payload.get("agent_id", "")
-                notes = str(payload.get("notes", ""))
-                note_evt = EndOfTurnNotesSaved(
-                    event_id=f"NOTES_{agent_id}_{int(datetime.now().timestamp())}",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(),
-                    week=game_engine.get_current_state(agent_id).current_week,
-                    notes=notes,
-                )
-                game_engine.event_repository.save(note_evt)
-                return {"ok": True}
-
-            return {"error": f"Unknown api_client action {action}"}
+            return ApplicationFactory._handle_api_request(game_engine, action, payload)
         return api_client
 
 __all__ = ["ApplicationFactory"]
