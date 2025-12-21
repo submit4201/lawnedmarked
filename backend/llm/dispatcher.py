@@ -75,6 +75,61 @@ class LLMDispatcher:
         ]
         return any(n in msg for n in needles)
 
+    def _extract_message_content(self, m: dict) -> tuple[str, str]:
+        """Extract role and content from a message, ensuring string content."""
+        role = (m.get("role") or "").strip().lower()
+        content = m.get("content")
+        if content is None:
+            content = ""
+        if not isinstance(content, str):
+            content = json.dumps(content, default=str)
+        return role, content
+
+    def _normalize_single_message(self, m: dict, system_parts: list[str]) -> dict | None:
+        """Normalize a single message. Returns None for system messages (handled separately)."""
+        role, content = self._extract_message_content(m)
+
+        if role == "system":
+            if content.strip():
+                system_parts.append(content.strip())
+            return None
+
+        if role == "assistant":
+            # If assistant has tool_calls but no content, some templates fail.
+            tcalls = m.get("tool_calls")
+            if tcalls and not content.strip():
+                content = "Executing tool calls..."
+            return {"role": "assistant", "content": content}
+
+        if role == "tool":
+            tool_name = m.get("name")
+            prefix = f"TOOL_RESULT({tool_name}): " if tool_name else "TOOL_RESULT: "
+            return {"role": "user", "content": prefix + content}
+
+        if role not in {"user", "assistant"}:
+            return {"role": "user", "content": content}
+
+        return {"role": role, "content": content}
+
+    def _merge_consecutive_messages(self, messages: list[dict]) -> list[dict]:
+        """Merge consecutive messages with the same role."""
+        if not messages:
+            return []
+
+        merged: list[dict] = [messages[0]]
+        for m in messages[1:]:
+            prev_role = merged[-1].get("role")
+            curr_role = m["role"]
+            
+            if prev_role == curr_role and curr_role in {"user", "assistant"}:
+                merged[-1]["content"] = (
+                    merged[-1].get("content", "") + "\n\n" + m.get("content", "")
+                ).strip()
+            else:
+                merged.append(m)
+
+        return merged
+
     def _normalize_messages_for_chat(self, messages: list[dict]) -> list[dict]:
         """Normalize messages to avoid apply_chat_template failures."""
         if not messages:
@@ -83,58 +138,149 @@ class LLMDispatcher:
         system_parts: list[str] = []
         rest: list[dict] = []
 
+        # Process each message
         for m in messages:
-            role = (m.get("role") or "").strip().lower()
-            content = m.get("content")
-            if content is None:
-                content = ""
-            if not isinstance(content, str):
-                content = json.dumps(content, default=str)
+            normalized = self._normalize_single_message(m, system_parts)
+            if normalized:
+                rest.append(normalized)
 
-            if role == "system":
-                if content.strip():
-                    system_parts.append(content.strip())
-                continue
-
-            if role == "assistant":
-                # If assistant has tool_calls but no content, some templates fail.
-                tcalls = m.get("tool_calls")
-                if tcalls and not content.strip():
-                    content = "Executing tool calls..."
-                rest.append({"role": "assistant", "content": content})
-                continue
-
-            if role == "tool":
-                tool_name = m.get("name")
-                prefix = f"TOOL_RESULT({tool_name}): " if tool_name else "TOOL_RESULT: "
-                rest.append({"role": "user", "content": prefix + content})
-                continue
-
-            if role not in {"user", "assistant"}:
-                rest.append({"role": "user", "content": content})
-                continue
-
-            rest.append({"role": role, "content": content})
-
-        merged: list[dict] = []
+        # Build final message list
+        result: list[dict] = []
         if system_parts:
-            merged.append({"role": "system", "content": "\n\n".join(system_parts)})
+            result.append({"role": "system", "content": "\n\n".join(system_parts)})
 
-        for m in rest:
-            if not merged:
-                if m["role"] != "user":
-                    merged.append({"role": "user", "content": m.get("content", "")})
-                else:
-                    merged.append(m)
-                continue
+        # Ensure first non-system message is user
+        if rest:
+            if rest[0]["role"] != "user":
+                result.append({"role": "user", "content": rest[0].get("content", "")})
+                rest = rest[1:]
+            result.extend(rest)
 
-            prev_role = merged[-1].get("role")
-            if prev_role == m["role"] and m["role"] in {"user", "assistant"}:
-                merged[-1]["content"] = (merged[-1].get("content", "") + "\n\n" + m.get("content", "")).strip()
-            else:
-                merged.append(m)
+        return self._merge_consecutive_messages(result)
 
-        return merged
+    def _summarize_messages(self, msgs: list[dict]) -> Dict[str, Any]:
+        """Create a summary of messages for audit logging."""
+        roles = [m.get("role") for m in msgs]
+        tail = msgs[-4:] if len(msgs) > 4 else msgs
+        return {
+            "count": len(msgs),
+            "roles": roles,
+            "tail_preview": [
+                {
+                    "role": m.get("role"),
+                    "content_preview": (m.get("content") or "").replace("\n", " ")[:200],
+                }
+                for m in tail
+            ],
+        }
+
+    def _extract_tool_names(self, tools: list[dict] | None) -> list[str]:
+        """Extract tool names from tools list, handling different formats."""
+        if not tools:
+            return []
+        
+        tool_names = []
+        for t in tools:
+            name = None
+            if isinstance(t, dict):
+                function = t.get("function")
+                if isinstance(function, dict):
+                    name = function.get("name")
+            if name:
+                tool_names.append(name)
+        return tool_names
+
+    def _reduce_messages_for_gpu(self, normalized: list[dict]) -> list[dict]:
+        """Reduce messages to system + last user message to handle GPU memory issues."""
+        reduced = []
+        if normalized and normalized[0].get("role") == "system":
+            reduced.append(normalized[0])
+        last_user = next((m for m in reversed(normalized) if m.get("role") == "user"), None)
+        if last_user:
+            reduced.append(last_user)
+        return reduced
+
+    async def _attempt_chat_with_retry(
+        self,
+        provider: LLMProvider,
+        normalized: list[dict],
+        tools: list[dict] | None,
+        step_idx: int | None,
+        agent_config: dict | None,
+        agent_id: str,
+        role_label: str,
+        attempt: int,
+    ) -> Dict[str, Any] | None:
+        """Attempt chat request with GPU error retry logic. Returns None if should continue retrying."""
+        import asyncio
+        from .providers.llmproviderbase import ChatRequest
+        
+        try:
+            request = ChatRequest(
+                messages=normalized,
+                tools=tools,
+                step_idx=step_idx,
+                config=agent_config
+            )
+            return await provider.chat(request)
+        except Exception as exc:
+            is_rate_limit = "429" in str(exc) or "quota" in str(exc).lower()
+            
+            if is_rate_limit and attempt < 2:  # max_retries - 1
+                wait_time = (attempt + 1) * 5
+                print(f"[LLM][{agent_id}] Rate limit hit (429). Waiting {wait_time}s before retry {attempt+1}/3...")
+                await asyncio.sleep(wait_time)
+                return None  # Continue retrying
+
+            self._audit(
+                {
+                    "type": "LLMError",
+                    "role": role_label,
+                    "agent_id": agent_id,
+                    "step": step_idx,
+                    "error": str(exc),
+                    "traceback": "".join(traceback.format_exception_only(type(exc), exc))[-2000:],
+                }
+            )
+
+            # Try GPU memory reduction if applicable
+            retry_on_gpu = (os.getenv("LLM_RETRY_ON_GPU_ERROR") or "1").strip().lower() not in {"0", "false", "no"}
+            if retry_on_gpu and self._is_gpu_resource_error(exc):
+                reduced = self._reduce_messages_for_gpu(normalized)
+                
+                self._audit(
+                    {
+                        "type": "LLMRetry",
+                        "role": role_label,
+                        "agent_id": agent_id,
+                        "step": step_idx,
+                        "reason": "gpu_resource_error",
+                        "messages": {"count": len(reduced), "roles": [m.get("role") for m in reduced]},
+                    }
+                )
+                
+                try:
+                    request = ChatRequest(
+                        messages=reduced,
+                        tools=tools,
+                        step_idx=step_idx,
+                        config=agent_config
+                    )
+                    return await provider.chat(request)
+                except Exception as exc2:
+                    self._audit(
+                        {
+                            "type": "LLMError",
+                            "role": role_label,
+                            "agent_id": agent_id,
+                            "step": step_idx,
+                            "error": str(exc2),
+                            "retry": True,
+                        }
+                    )
+
+            # Graceful failure payload
+            return {"role": "assistant", "content": "", "tool_calls": None, "error": str(exc)}
 
     async def _chat_with_guards(
         self,
@@ -148,30 +294,7 @@ class LLMDispatcher:
         agent_config: dict | None,
     ) -> Dict[str, Any]:
         normalized = self._normalize_messages_for_chat(messages)
-
-        def _summarize_msgs(msgs: list[dict]) -> Dict[str, Any]:
-            roles = [m.get("role") for m in msgs]
-            tail = msgs[-4:] if len(msgs) > 4 else msgs
-            return {
-                "count": len(msgs),
-                "roles": roles,
-                "tail_preview": [
-                    {
-                        "role": m.get("role"),
-                        "content_preview": (m.get("content") or "").replace("\n", " ")[:200],
-                    }
-                    for m in tail
-                ],
-            }
-
-        tool_names = []
-        for t in tools or []:
-            name = None
-            if isinstance(t, dict):
-                function = t.get("function")
-                if isinstance(function, dict):
-                    name = function.get("name")
-            tool_names.append(name)
+        tool_names = self._extract_tool_names(tools)
 
         self._audit(
             {
@@ -181,86 +304,19 @@ class LLMDispatcher:
                 "step": step_idx,
                 "provider": provider.__class__.__name__,
                 "model": getattr(getattr(provider, "config", None), "model", ""),
-                "tools": [n for n in tool_names if n],
-                "messages": _summarize_msgs(normalized),
+                "tools": tool_names,
+                "messages": self._summarize_messages(normalized),
             }
         )
 
-        retry_on_gpu = (os.getenv("LLM_RETRY_ON_GPU_ERROR") or "1").strip().lower() not in {"0", "false", "no"}
-        
-        import asyncio
         max_retries = 3
         for attempt in range(max_retries):
-            try:
-                from .providers.llmproviderbase import ChatRequest
-                request = ChatRequest(
-                    messages=normalized,
-                    tools=tools,
-                    step_idx=step_idx,
-                    config=agent_config
-                )
-                return await provider.chat(request)
-            except Exception as exc:
-                is_rate_limit = "429" in str(exc) or "quota" in str(exc).lower()
-                
-                if is_rate_limit and attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 5
-                    print(f"[LLM][{agent_id}] Rate limit hit (429). Waiting {wait_time}s before retry {attempt+1}/{max_retries}...")
-                    await asyncio.sleep(wait_time)
-                    continue
-
-                self._audit(
-                    {
-                        "type": "LLMError",
-                        "role": role_label,
-                        "agent_id": agent_id,
-                        "step": step_idx,
-                        "error": str(exc),
-                        "traceback": "".join(traceback.format_exception_only(type(exc), exc))[-2000:],
-                    }
-                )
-
-                if retry_on_gpu and self._is_gpu_resource_error(exc):
-                    try:
-                        # Keep only system + last user message to reduce memory pressure.
-                        reduced = []
-                        if normalized and normalized[0].get("role") == "system":
-                            reduced.append(normalized[0])
-                        last_user = next((m for m in reversed(normalized) if m.get("role") == "user"), None)
-                        if last_user:
-                            reduced.append(last_user)
-
-                        self._audit(
-                            {
-                                "type": "LLMRetry",
-                                "role": role_label,
-                                "agent_id": agent_id,
-                                "step": step_idx,
-                                "reason": "gpu_resource_error",
-                                "messages": {"count": len(reduced), "roles": [m.get("role") for m in reduced]},
-                            }
-                        )
-                        request = ChatRequest(
-                            messages=reduced,
-                            tools=tools,
-                            step_idx=step_idx,
-                            config=agent_config
-                        )
-                        return await provider.chat(request)
-                    except Exception as exc2:
-                        self._audit(
-                            {
-                                "type": "LLMError",
-                                "role": role_label,
-                                "agent_id": agent_id,
-                                "step": step_idx,
-                                "error": str(exc2),
-                                "retry": True,
-                            }
-                        )
-
-                # Graceful failure payload so request doesn't crash.
-                return {"role": "assistant", "content": "", "tool_calls": None, "error": str(exc)}
+            result = await self._attempt_chat_with_retry(
+                provider, normalized, tools, step_idx, agent_config,
+                agent_id, role_label, attempt
+            )
+            if result is not None:
+                return result
         
         return {"role": "assistant", "content": "", "tool_calls": None, "error": "Max retries exceeded"}
 
@@ -320,6 +376,61 @@ class LLMDispatcher:
         
         return await self._execute_turn_loop(agent_id, provider, messages, tools)
 
+    def _add_step_info_to_messages(self, messages: list[dict], step_idx: int, max_steps: int):
+        """Add step information to the message history."""
+        remaining = max_steps - step_idx
+        step_info = f"\n\n[SYSTEM: Step {step_idx+1}/{max_steps}. {remaining} steps remaining.]"
+        if remaining <= 3:
+            step_info += " WARNING: You are running out of steps. Wrap up your turn now."
+        
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"] += step_info
+        else:
+            messages.append({"role": "user", "content": step_info})
+
+    def _process_llm_response(
+        self, 
+        result: dict, 
+        agent_id: str, 
+        step_idx: int,
+        notes: str
+    ) -> tuple[str, list, str]:
+        """Process LLM response to extract content, tool calls, and notes."""
+        content = result.get("content", "") or ""
+        if content:
+            print(f"[LLM][{agent_id}][step {step_idx+1}] Content: {content[:100]}...")
+        
+        # Extract tool calls
+        tool_calls = result.get("tool_calls") or []
+        if not tool_calls:
+            tool_calls = ResponseParser.extract_tool_calls_from_text(content)
+            if tool_calls:
+                result["tool_calls"] = tool_calls
+        
+        # Extract notes
+        extracted_notes = ResponseParser.extract_notes(content)
+        if extracted_notes:
+            notes += extracted_notes
+        
+        return content, tool_calls, notes
+
+    def _finalize_turn(
+        self,
+        agent_id: str,
+        step_idx: int,
+        content: str,
+        tool_calls: list,
+        step_tool_results: list,
+        emitted_events: List[GameEvent],
+        thoughts: List[str],
+        notes: str
+    ) -> dict:
+        """Finalize turn by logging and saving notes."""
+        self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
+        if notes and self.session_store:
+            self.session_store.append_note(agent_id, notes)
+        return {"events": emitted_events, "thoughts": thoughts, "notes": notes}
+
     async def _execute_turn_loop(self, agent_id: str, provider: LLMProvider, messages: list[dict], tools: list[dict] | None) -> Dict[str, Any]:
         emitted_events: List[GameEvent] = []
         thoughts: List[str] = []
@@ -333,16 +444,7 @@ class LLMDispatcher:
 
         max_steps = 10
         for step_idx in range(max_steps):
-            # Info for the model
-            remaining = max_steps - step_idx
-            step_info = f"\n\n[SYSTEM: Step {step_idx+1}/{max_steps}. {remaining} steps remaining.]"
-            if remaining <= 3:
-                step_info += " WARNING: You are running out of steps. Wrap up your turn now."
-            
-            if messages and messages[-1]["role"] == "user":
-                messages[-1]["content"] += step_info
-            else:
-                messages.append({"role": "user", "content": step_info})
+            self._add_step_info_to_messages(messages, step_idx, max_steps)
 
             agent_config = self.provider_config_map.get(agent_id, {})
             result = await self._chat_with_guards(
@@ -357,21 +459,9 @@ class LLMDispatcher:
             
             self._audit({"type": "LLMResponse", "step": step_idx + 1, "data": result})
 
-            content = result.get("content", "") or ""
-            if content:
-                print(f"[LLM][{agent_id}][step {step_idx+1}] Content: {content[:100]}...")
-            
+            content, tool_calls, notes = self._process_llm_response(result, agent_id, step_idx, notes)
             thoughts.append(ResponseParser.extract_thought(content))
-            extracted_notes = ResponseParser.extract_notes(content)
-            if extracted_notes:
-                notes += extracted_notes
             
-            tool_calls = result.get("tool_calls") or []
-            if not tool_calls:
-                tool_calls = ResponseParser.extract_tool_calls_from_text(content)
-                if tool_calls:
-                    result["tool_calls"] = tool_calls
-
             # Log helpful info
             if tool_calls:
                 self.logger.log_console(step_idx, tool_calls)
@@ -392,11 +482,7 @@ class LLMDispatcher:
                 
                 # Check for wants end turn
                 if ResponseParser.wants_end_turn(content, None):
-                     # Log final state
-                     self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
-                     if notes and self.session_store:
-                        self.session_store.append_note(agent_id, notes)
-                     return {"events": emitted_events, "thoughts": thoughts, "notes": notes}
+                    return self._finalize_turn(agent_id, step_idx, content, tool_calls, step_tool_results, emitted_events, thoughts, notes)
 
             # --- Tool Call Execution ---
             if not self.tool_executor:
@@ -409,8 +495,7 @@ class LLMDispatcher:
                     agent_id, tool_calls, step_tool_results, messages, emitted_events, notes, content, last_event_id
                 )
                 if turn_ended:
-                     self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
-                     return {"events": emitted_events, "thoughts": thoughts, "notes": notes}
+                    return self._finalize_turn(agent_id, step_idx, content, tool_calls, step_tool_results, emitted_events, thoughts, notes)
 
             self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
 
@@ -461,101 +546,156 @@ class LLMDispatcher:
 
         return None # No command found, continue
 
-    def _execute_tool_calls(self, agent_id, tool_calls, step_tool_results, messages, emitted_events, notes, content, last_event_id):
-        turn_ended = False
-        for call in tool_calls:
-            # Normalize call object
-            if isinstance(call, dict):
-                fn = call.get("function") or {}
-                tool_name = fn.get("name")
-                args_json = fn.get("arguments") or "{}"
-                call_id = call.get("id") or ""
-            else:
-                fn = getattr(call, "function", None)
-                tool_name = getattr(fn, "name", None) if fn else None
-                args_json = getattr(fn, "arguments", "{}") if fn else "{}"
-                call_id = getattr(call, "id", "")
+    def _normalize_tool_call(self, call) -> tuple[str, dict, str]:
+        """Normalize a tool call object to extract name, args, and call_id."""
+        if isinstance(call, dict):
+            fn = call.get("function") or {}
+            tool_name = fn.get("name")
+            args_json = fn.get("arguments") or "{}"
+            call_id = call.get("id") or ""
+        else:
+            fn = getattr(call, "function", None)
+            tool_name = getattr(fn, "name", None) if fn else None
+            args_json = getattr(fn, "arguments", "{}") if fn else "{}"
+            call_id = getattr(call, "id", "")
+        
+        try:
+            args = json.loads(args_json) if isinstance(args_json, str) else (args_json or {})
+        except Exception:
+            args = {}
+        
+        tool_name = str(tool_name or "")
+        return tool_name, args, call_id
+
+    def _handle_info_tool(
+        self, 
+        agent_id: str, 
+        tool_name: str, 
+        args: dict, 
+        call_id: str,
+        content: str,
+        step_tool_results: list,
+        messages: list
+    ) -> bool:
+        """Execute info or session tool. Returns True if turn should end."""
+        out = self.tool_executor.execute(tool_name, args)
+        self._audit({"type": "ToolExecuted", "name": tool_name, "result": out})
+        print(f"[LLM][{agent_id}] Tool {tool_name} executed. Result length: {len(str(out))}")
+        
+        step_tool_results.append({"name": tool_name, "content": str(out)})
+        messages.append({
+            "role": "tool",
+            "tool_call_id": call_id,
+            "name": tool_name,
+            "content": str(out),
+        })
+        
+        return ResponseParser.wants_end_turn(content, tool_name)
+
+    def _handle_command_tool(
+        self,
+        agent_id: str,
+        tool_name: str,
+        args: dict,
+        call_id: str,
+        step_tool_results: list,
+        messages: list,
+        emitted_events: List[GameEvent],
+        notes: str
+    ) -> tuple[bool, str | None]:
+        """Execute command tool. Returns (turn_ended, last_event_id)."""
+        if self.command_executor is None:
+            step_tool_results.append({"name": tool_name, "content": "ERROR: No command_executor configured"})
+            return False, None
+        
+        try:
+            cmd_args = dict(args or {})
+            cmd_args.pop("agent_id", None)
+            command = LLMCommandFactory.from_llm(agent_id=agent_id, command_name=tool_name, **cmd_args)
+            success, events, message = self.command_executor(agent_id, command)
             
-            try:
-                args = json.loads(args_json) if isinstance(args_json, str) else (args_json or {})
-            except Exception:
-                args = {}
-
-            tool_name = str(tool_name or "")
-            if not tool_name:
-                continue
-
-            if ResponseParser.is_info_tool(tool_name) or ResponseParser.is_session_tool(tool_name):
-                out = self.tool_executor.execute(tool_name, args)
-                self._audit({"type": "ToolExecuted", "name": tool_name, "result": out})
-                print(f"[LLM][{agent_id}] Tool {tool_name} executed. Result length: {len(str(out))}")
-                step_tool_results.append({"name": tool_name, "content": str(out)})
+            self._audit({
+                "type": "CommandExecuted", 
+                "name": tool_name, 
+                "success": success, 
+                "message": message, 
+                "events": [e.to_dict() for e in events]
+            })
+            print(f"[LLM][{agent_id}] Command {tool_name} -> success={success}, message={message}")
+            step_tool_results.append({"name": tool_name, "content": f"success={success}, message={message}"})
+            
+            if not success:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call_id,
                     "name": tool_name,
-                    "content": str(out),
+                    "content": f"ERROR: {message}",
                 })
-                # Check for end of turn signal in args or content
-                if ResponseParser.wants_end_turn(content, tool_name):
-                    turn_ended = True
-                continue
-
-            if self._tool_is_command(tool_name):
-                if self.command_executor is None:
-                    step_tool_results.append({"name": tool_name, "content": "ERROR: No command_executor configured"})
-                    continue
+                return False, None
+            
+            emitted_events.extend(events)
+            
+            # Save notes after successful command
+            if notes and self.session_store:
                 try:
-                    cmd_args = dict(args or {})
-                    cmd_args.pop("agent_id", None)
-                    command = LLMCommandFactory.from_llm(agent_id=agent_id, command_name=tool_name, **cmd_args)
-                    success, events, message = self.command_executor(agent_id, command)
-                    self._audit({"type": "CommandExecuted", "name": tool_name, "success": success, "message": message, "events": [e.to_dict() for e in events]})
-                    print(f"[LLM][{agent_id}] Command {tool_name} -> success={success}, message={message}")
-                    step_tool_results.append({"name": tool_name, "content": f"success={success}, message={message}"})
-                    
-                    if not success:
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": call_id,
-                            "name": tool_name,
-                            "content": f"ERROR: {message}"
-                        })
-                        continue
-
-                    emitted_events.extend(events)
-                    if events:
-                        last_event_id = getattr(events[-1], "event_id", last_event_id)
-
-                    events_summary = [getattr(e, "event_type", "") for e in (events or [])]
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "name": tool_name,
-                        "content": f"SUCCESS: emitted={events_summary}; last_event_id={last_event_id}"
-                    })
-                    
-                    if notes and self.session_store:
-                        self.session_store.append_note(agent_id, notes)
+                    self.session_store.append_note(agent_id, notes)
                 except Exception as exc:
                     step_tool_results.append({"name": tool_name, "content": f"ERROR: {str(exc)}"})
                     messages.append({
                         "role": "tool",
                         "tool_call_id": call_id,
                         "name": tool_name,
-                        "content": f"ERROR: {str(exc)}"
+                        "content": f"ERROR: {str(exc)}",
                     })
-                continue
+                    return False, None
             
-            # Unknown tool
-            print(f"[LLM][{agent_id}] Unknown tool call: {tool_name}")
-            step_tool_results.append({"name": tool_name, "content": f"ERROR: Tool '{tool_name}' not found."})
+            # Get last event id if available
+            last_event_id = events[-1].event_id if events else None
+            
             messages.append({
                 "role": "tool",
                 "tool_call_id": call_id,
                 "name": tool_name,
-                "content": f"ERROR: Tool '{tool_name}' not found. Use tool_help to see available tools."
+                "content": message or "Command executed successfully.",
             })
+            
+            return True, last_event_id
+            
+        except Exception as exc:
+            step_tool_results.append({"name": tool_name, "content": f"ERROR: {str(exc)}"})
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call_id,
+                "name": tool_name,
+                "content": f"ERROR: {str(exc)}",
+            })
+            return False, None
+
+    def _execute_tool_calls(self, agent_id, tool_calls, step_tool_results, messages, emitted_events, notes, content, last_event_id):
+        turn_ended = False
+        
+        for call in tool_calls:
+            tool_name, args, call_id = self._normalize_tool_call(call)
+            
+            if not tool_name:
+                continue
+
+            # Handle info/session tools
+            if ResponseParser.is_info_tool(tool_name) or ResponseParser.is_session_tool(tool_name):
+                if self._handle_info_tool(agent_id, tool_name, args, call_id, content, step_tool_results, messages):
+                    turn_ended = True
+                continue
+
+            # Handle command tools
+            if self._tool_is_command(tool_name):
+                ended, event_id = self._handle_command_tool(
+                    agent_id, tool_name, args, call_id, 
+                    step_tool_results, messages, emitted_events, notes
+                )
+                if ended:
+                    turn_ended = True
+                if event_id:
+                    last_event_id = event_id
 
         return turn_ended, last_event_id
 
