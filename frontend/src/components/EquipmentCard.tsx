@@ -1,18 +1,26 @@
 import { motion } from 'framer-motion';
-import { Settings, AlertTriangle, CheckCircle, Wrench, Zap } from 'lucide-react';
+import { Settings, AlertTriangle, CheckCircle, Wrench, Zap, LucideIcon } from 'lucide-react';
 import type { Machine } from '../store/gameStore.ts';
+import { useMemo } from 'react';
 
 interface EquipmentCardProps {
     machine: Machine;
     onMaintain?: (id: string) => void;
 }
 
-export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
-    const isBroken = machine.status === 'BROKEN';
-    const isRepairing = machine.status === 'IN_REPAIR';
-    const condition = machine.condition;
+interface StatusConfig {
+    color: string;
+    gradient: string;
+    icon: LucideIcon;
+    label: string;
+}
 
-    const getStatusConfig = () => {
+const useMachineStatus = (machine: Machine): StatusConfig => {
+    return useMemo(() => {
+        const { status, condition } = machine;
+        const isBroken = status === 'BROKEN';
+        const isRepairing = status === 'IN_REPAIR';
+
         if (isBroken) return {
             color: 'crimson',
             gradient: 'from-crimson to-neon-pink',
@@ -43,15 +51,62 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
             icon: AlertTriangle,
             label: 'DEGRADED'
         };
-    };
+    }, [machine.status, machine.condition]);
+};
 
-    const status = getStatusConfig();
-    const StatusIcon = status.icon;
-
-    // SVG ring calculations
+const ConditionRing = ({ condition, status, machineId }: { condition: number, status: StatusConfig, machineId: string }) => {
     const radius = 32;
     const circumference = 2 * Math.PI * radius;
     const strokeOffset = circumference - (condition / 100) * circumference;
+
+    return (
+        <div className="relative w-20 h-20 flex-shrink-0">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+                <circle
+                    cx="40" cy="40" r={radius}
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    fill="none"
+                    className="text-steel/30"
+                />
+                <motion.circle
+                    cx="40" cy="40" r={radius}
+                    stroke={`url(#gradient-${machineId})`}
+                    strokeWidth="6"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    initial={{ strokeDashoffset: circumference }}
+                    animate={{ strokeDashoffset: strokeOffset }}
+                    transition={{ duration: 1.5, ease: "easeOut" }}
+                    style={{
+                        filter: `drop-shadow(0 0 8px var(--color-${status.color}))`
+                    }}
+                />
+                <defs>
+                    <linearGradient id={`gradient-${machineId}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" className={`text-${status.color}`} stopColor="currentColor" />
+                        <stop offset="100%" className="text-neon-cyan" stopColor="currentColor" />
+                    </linearGradient>
+                </defs>
+            </svg>
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`font-display text-2xl font-bold text-${status.color}`}>
+                    {Math.round(condition)}
+                </span>
+                <span className="text-[10px] font-mono text-slate uppercase">%</span>
+            </div>
+        </div>
+    );
+};
+
+export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
+    const status = useMachineStatus(machine);
+    const StatusIcon = status.icon;
+    const isBroken = machine.status === 'BROKEN';
+    const isRepairing = machine.status === 'IN_REPAIR';
+    const condition = machine.condition;
 
     return (
         <motion.div
@@ -64,61 +119,15 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
         transition-colors duration-300
       `}
         >
-            {/* Glow effect on hover */}
             <motion.div
                 className={`absolute inset-0 rounded-xl bg-gradient-to-br ${status.gradient} opacity-0`}
                 whileHover={{ opacity: 0.05 }}
             />
 
-            {/* Content */}
             <div className="relative z-10 flex gap-4">
-                {/* Condition Ring */}
-                <div className="relative w-20 h-20 flex-shrink-0">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
-                        {/* Background ring */}
-                        <circle
-                            cx="40" cy="40" r={radius}
-                            stroke="currentColor"
-                            strokeWidth="6"
-                            fill="none"
-                            className="text-steel/30"
-                        />
-                        {/* Progress ring */}
-                        <motion.circle
-                            cx="40" cy="40" r={radius}
-                            stroke={`url(#gradient-${machine.machine_id})`}
-                            strokeWidth="6"
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeDasharray={circumference}
-                            initial={{ strokeDashoffset: circumference }}
-                            animate={{ strokeDashoffset: strokeOffset }}
-                            transition={{ duration: 1.5, ease: "easeOut" }}
-                            style={{
-                                filter: `drop-shadow(0 0 8px var(--color-${status.color}))`
-                            }}
-                        />
-                        {/* Gradient definition */}
-                        <defs>
-                            <linearGradient id={`gradient-${machine.machine_id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" className={`text-${status.color}`} stopColor="currentColor" />
-                                <stop offset="100%" className="text-neon-cyan" stopColor="currentColor" />
-                            </linearGradient>
-                        </defs>
-                    </svg>
+                <ConditionRing condition={condition} status={status} machineId={machine.machine_id} />
 
-                    {/* Center content */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`font-display text-2xl font-bold text-${status.color}`}>
-                            {Math.round(condition)}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate uppercase">%</span>
-                    </div>
-                </div>
-
-                {/* Info */}
                 <div className="flex-1 min-w-0">
-                    {/* Machine ID */}
                     <div className="flex items-center gap-2 mb-1">
                         <Settings size={16} className="text-slate" />
                         <h4 className="font-display text-base text-white truncate">
@@ -126,12 +135,10 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
                         </h4>
                     </div>
 
-                    {/* Type */}
                     <div className="text-xs font-mono text-slate uppercase tracking-wider mb-3">
                         {machine.machine_type}
                     </div>
 
-                    {/* Status */}
                     <div className="flex items-center gap-2">
                         <div className={`
               flex items-center gap-1.5 px-2 py-1 rounded-md
@@ -144,7 +151,6 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
                         </div>
                     </div>
 
-                    {/* Stats */}
                     <div className="flex gap-4 mt-3">
                         <div>
                             <div className="text-xs font-mono text-slate uppercase">Loads</div>
@@ -154,7 +160,6 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
                 </div>
             </div>
 
-            {/* Maintenance Button */}
             <motion.button
                 onClick={(e) => {
                     e.stopPropagation();
@@ -176,7 +181,6 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
                 {isRepairing ? 'REPAIR IN PROGRESS' : condition > 95 ? 'OPTIMAL CONDITION' : 'SCHEDULE MAINTENANCE'}
             </motion.button>
 
-            {/* Critical Alert Badge */}
             {isBroken && (
                 <motion.div
                     className="absolute -top-2 -right-2 px-2 py-1 rounded-full bg-crimson text-white text-[8px] font-bold uppercase"

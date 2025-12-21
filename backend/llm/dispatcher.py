@@ -45,6 +45,7 @@ class LLMDispatcher:
         self.command_executor = command_executor
         self.game_engine = game_engine
         self.provider: LLMProvider = None  # type: ignore # set in _get_provider_for_agent
+        self.logger = TurnLogger()
 
     def _extract_thought(self, content: str) -> str:
         import re
@@ -394,7 +395,14 @@ class LLMDispatcher:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                return await provider.chat(normalized, tools=tools, step_idx=step_idx, config=agent_config)
+                from .providers.llmproviderbase import ChatRequest
+                request = ChatRequest(
+                    messages=normalized,
+                    tools=tools,
+                    step_idx=step_idx,
+                    config=agent_config
+                )
+                return await provider.chat(request)
             except Exception as exc:
                 is_rate_limit = "429" in str(exc) or "quota" in str(exc).lower()
                 
@@ -435,7 +443,13 @@ class LLMDispatcher:
                                 "messages": {"count": len(reduced), "roles": [m.get("role") for m in reduced]},
                             }
                         )
-                        return await provider.chat(reduced, tools=tools, step_idx=step_idx, config=agent_config)
+                        request = ChatRequest(
+                            messages=reduced,
+                            tools=tools,
+                            step_idx=step_idx,
+                            config=agent_config
+                        )
+                        return await provider.chat(request)
                     except Exception as exc2:
                         self._audit(
                             {

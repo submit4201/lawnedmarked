@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .llmproviderbase import LLMProviderConfigBase
-from .openai_compatible import OpenAICompatibleProvider
+from .openai_provider import OpenAIProvider
 
 
 class OllamaConfig(LLMProviderConfigBase):
@@ -13,6 +13,6 @@ class OllamaConfig(LLMProviderConfigBase):
         self.model = ""  # e.g. "llama3.1" or "qwen2.5:7b"
 
 
-class OllamaProvider(OpenAICompatibleProvider):
+class OllamaProvider(OpenAIProvider):
     def __init__(self, config: OllamaConfig | None = None):
         super().__init__(config or OllamaConfig())

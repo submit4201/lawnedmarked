@@ -28,21 +28,14 @@ class OpenAIProvider(LLMProviderBase):
     def client(self):
         return self._client
 
-    async def chat(
-        self,
-        messages: list[dict],
-        tools: Optional[list[dict]] = None,
-        step_idx: Optional[int] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> dict:
+    async def chat(self, request: "ChatRequest") -> dict:
         create_kwargs: Dict[str, Any] = {
             "model": self.config.model,
-            "messages": messages,
+            "messages": request.messages,
             "temperature": float(self.config.extra.get("temperature", 0.2)),
         }
-        if tools is not None:
-            create_kwargs["tools"] = tools
+        if request.tools is not None:
+            create_kwargs["tools"] = request.tools
 
         for k, v in (self.config.extra or {}).items():
             if k in {"temperature"}:

@@ -74,22 +74,15 @@ class AzureAIProjectsProvider(LLMProviderBase):
             definition=definition
         )
 
-    async def chat(
-        self,
-        messages: list[dict],
-        tools: Optional[list[dict]] = None,
-        step_idx: Optional[int] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> dict:  
-        agent = self._create_agent_version(tools)
+    async def chat(self, request: "ChatRequest") -> dict:
+        agent = self._create_agent(request.tools)
         if not agent:
              return {"error": "Failed to create agent version"}
 
         openai_client = self._openai_client
         
         payload_messages = []
-        for m in messages:
+        for m in request.messages:
             content = m.get("content")
             role = m.get("role")
             

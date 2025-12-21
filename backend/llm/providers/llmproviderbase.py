@@ -5,6 +5,17 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 
+from pydantic import BaseModel, Field
+
+class ChatRequest(BaseModel):
+    """Standardized request object for LLM chat interactions."""
+    messages: list[dict]
+    tools: Optional[list[dict]] = None
+    step_idx: Optional[int] = None
+    config: Optional[Dict[str, Any]] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
 @dataclass
 class LLMProviderConfigBase:
     """Shared configuration shape for all LLM providers.
@@ -36,15 +47,8 @@ class LLMProviderBase:
     def call(self, prompt: str) -> str:
         raise NotImplementedError("Subclasses must implement call()")
 
-    async def chat(
-        self,
-        messages: list[dict],
-        tools: Optional[list[dict]] = None,
-        step_idx: Optional[int] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> dict:
-        raise NotImplementedError("Subclasses must implement chat()")
+    async def chat(self, request: ChatRequest) -> dict:
+        raise NotImplementedError("Subclasses must implement chat(request: ChatRequest)")
 
     def client(self):
         """Return the underlying client instance (if any)."""

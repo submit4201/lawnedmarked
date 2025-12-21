@@ -30,14 +30,7 @@ class GeminiProvider(LLMProviderBase):
     def __init__(self, config: GeminiConfig | None = None):
         super().__init__(config or GeminiConfig())
 
-    async def chat(
-        self,
-        messages: list[dict],
-        tools: Optional[list[dict]] = None,
-        step_idx: Optional[int] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> dict:
+    async def chat(self, request: "ChatRequest") -> dict:
         api_key = (self.config.api_key or "").strip()
         if not api_key:
             raise RuntimeError("Gemini api_key is missing (set GEMINI_API_KEY)")
@@ -45,7 +38,7 @@ class GeminiProvider(LLMProviderBase):
         endpoint = (self.config.endpoint or "").rstrip("/")
         model = (self.config.model or "").strip() or "gemini-1.5-flash"
 
-        payload = self._build_payload(messages, tools)
+        payload = self._build_payload(request.messages, request.tools)
 
         url = f"{endpoint}/v1beta/models/{model}:generateContent"
         params = {"key": api_key}

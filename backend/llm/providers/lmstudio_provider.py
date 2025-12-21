@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .llmproviderbase import LLMProviderConfigBase
-from .openai_compatible import OpenAICompatibleProvider
+from .openai_provider import OpenAIProvider
 
 
 class LMStudioConfig(LLMProviderConfigBase):
@@ -12,6 +12,6 @@ class LMStudioConfig(LLMProviderConfigBase):
         self.model = ""  # must be configured
 
 
-class LMStudioProvider(OpenAICompatibleProvider):
+class LMStudioProvider(OpenAIProvider):
     def __init__(self, config: LMStudioConfig | None = None):
         super().__init__(config or LMStudioConfig())

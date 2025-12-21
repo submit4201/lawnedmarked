@@ -17,46 +17,48 @@ from enum import Enum
 from typing import Any
 
 
+from functools import singledispatch
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
+
+@singledispatch
 def to_serializable(obj: Any) -> Any:
     """
     Convert dataclass/enum/datetime-heavy structures to JSON-safe payloads.
     
-    Recursively processes:
-    - Enum -> enum.value
-    - datetime -> ISO format string
-    - dataclass -> dict (via asdict)
-    - list -> recursively processed list
-    - dict -> recursively processed dict
-    - other -> passed through unchanged
+    Uses singledispatch for extensible type handling.
     
     Args:
         obj: Any Python object to serialize
         
     Returns:
         JSON-serializable representation of the object
-        
-    Example:
-        >>> from core.models import AgentState
-        >>> state = AgentState(agent_id="P001")
-        >>> json_data = to_serializable(state)
-        >>> import json
-        >>> json.dumps(json_data)  # Works!
     """
-    if isinstance(obj, Enum):
-        return obj.value
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if hasattr(obj, "__dataclass_fields__"):
+    # Dataclasses are not a type but a structure, so we check explicitly in default
+    if is_dataclass(obj):
         return {k: to_serializable(v) for k, v in asdict(obj).items()}
-    if isinstance(obj, list):
-        return [to_serializable(v) for v in obj]
-    if isinstance(obj, dict):
-        return {k: to_serializable(v) for k, v in obj.items()}
     return obj
 
+@to_serializable.register
+def _(obj: Enum):
+    return obj.value
+
+@to_serializable.register
+def _(obj: datetime):
+    return obj.isoformat()
+
+@to_serializable.register
+def _(obj: list):
+    return [to_serializable(v) for v in obj]
+
+@to_serializable.register
+def _(obj: dict):
+    return {k: to_serializable(v) for k, v in obj.items()}
 
 # ! Legacy alias for backward compatibility
-# * Some modules may still reference _to_serializable
 _to_serializable = to_serializable
 
 
