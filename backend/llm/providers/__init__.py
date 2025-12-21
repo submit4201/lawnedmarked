@@ -2,7 +2,6 @@ from .llmproviderbase import LLMProviderConfigBase, LLMProviderBase
 from .llmproviderbase import LLMProviderConfigBase as LLMProviderConfig
 from .llmproviderbase import LLMProviderBase as LLMProvider
 
-from .openai_compatible import OpenAICompatibleProvider
 from .fallback_provider import FallbackProvider
 from .localprovider import LocalProvider, localConfig
 from .mock import MockLLM
@@ -22,7 +21,6 @@ __all__ = [
     "LLMProviderConfig",
     "LLMProvider",
 
-    "OpenAICompatibleProvider",
     "FallbackProvider",
     "LocalProvider",
     "localConfig",

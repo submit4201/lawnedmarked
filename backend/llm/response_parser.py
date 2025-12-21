@@ -65,54 +65,73 @@ class ResponseParser:
     @staticmethod
     def extract_tool_calls_from_text(text: str) -> list[dict]:
         """Extract <tool_call> tags from text and convert to OpenAI-style tool_calls."""
+        if not text:
+            return []
+
         calls = []
-        # Match <tool_call> ... </tool_call> or <tool_call> ... (if tag is not closed)
-        # We use a more robust pattern that captures everything between tags.
         pattern = r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|$)"
         matches = re.finditer(pattern, text, re.S)
         
         for m in matches:
-            try:
-                raw_content = m.group(1).strip()
-                # Remove markdown code blocks if present
-                if raw_content.startswith("```"):
-                    raw_content = re.sub(r"^```(?:json)?\n", "", raw_content)
-                    raw_content = re.sub(r"\n```$", "", raw_content)
-                
-                # Try to find the first { and last } to extract JSON
-                start = raw_content.find("{")
-                end = raw_content.rfind("}")
-                if start != -1 and end != -1:
-                    json_str = raw_content[start:end+1]
-                    
-                    # Handle escaped JSON if the LLM wrapped it in a string
-                    if "\\\"" in json_str:
-                        try:
-                            # Try to unescape by loading as a string first if it's wrapped in quotes
-                            if raw_content.startswith("\"") and raw_content.endswith("\""):
-                                json_str = json.loads(raw_content)
-                            else:
-                                # Manual unescape for common cases
-                                json_str = json_str.replace("\\\"", "\"").replace("\\\\", "\\")
-                        except:
-                            pass
-
-                    data = json.loads(json_str)
-                    name = data.get("name")
-                    args = data.get("arguments") or {}
-                    if name:
-                        calls.append({
-                            "id": f"call_{uuid.uuid4().hex[:8]}",
-                            "type": "function",
-                            "function": {
-                                "name": name,
-                                "arguments": json.dumps(args) if isinstance(args, dict) else str(args)
-                            }
-                        })
-            except Exception as e:
-                print(f"[LLM] Error parsing tool call: {e}")
-                continue
+            tool_call = ResponseParser._parse_single_tool_call(m.group(1))
+            if tool_call:
+                calls.append(tool_call)
         return calls
+
+    @staticmethod
+    def _parse_single_tool_call(raw_content: str) -> dict | None:
+        """Parse a single tool call content string."""
+        try:
+            json_str = ResponseParser._clean_json_content(raw_content)
+            if not json_str:
+                return None
+
+            data = json.loads(json_str)
+            name = data.get("name")
+            args = data.get("arguments") or {}
+            
+            if name:
+                return {
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args) if isinstance(args, dict) else str(args)
+                    }
+                }
+        except Exception as e:
+            print(f"[LLM] Error parsing tool call: {e}")
+        
+        return None
+
+    @staticmethod
+    def _clean_json_content(raw_content: str) -> str | None:
+        """Clean and extract JSON string from raw content."""
+        clean = raw_content.strip()
+        # Remove markdown code blocks
+        if clean.startswith("```"):
+            clean = re.sub(r"^```(?:json)?\n", "", clean)
+            clean = re.sub(r"\n```$", "", clean)
+        
+        # Extract JSON object
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start == -1 or end == -1:
+            return None
+            
+        json_str = clean[start:end+1]
+        
+        # Handle escaped JSON
+        if "\\\"" in json_str:
+            try:
+                if clean.startswith("\"") and clean.endswith("\""):
+                    return json.loads(clean)
+                else:
+                    return json_str.replace("\\\"", "\"").replace("\\\\", "\\")
+            except:
+                pass
+        
+        return json_str
 
     @staticmethod
     def is_info_tool(name: str) -> bool:

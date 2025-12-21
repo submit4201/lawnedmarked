@@ -22,27 +22,38 @@ EXTENSIONS = {".py", ".js", ".ts", ".tsx", ".md", ".html", ".css"}
 SKIP_DIRS = {".git", ".venv", ".log", ".test", ".todo", "node_modules", "dist", "__pycache__"}
 
 
+from typing import Tuple
+
 def scan_file(file_path: Path) -> List[str]:
     """Scans a single file for known comment patterns."""
     found_items = []
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             for i, line in enumerate(f, 1):
-                clean_line = line.strip()
-                if not clean_line:
-                    continue
-                
-                comment_content = _extract_comment(clean_line)
-                if comment_content:
-                    matched = _match_pattern(comment_content)
-                    if matched:
-                        tag, msg = matched
-                        found_items.append(f"[{tag}] {file_path.name}:{i} {msg}")
+                item = _scan_line_for_todos(line, file_path.name, i)
+                if item:
+                    found_items.append(item)
 
     except Exception as e:
         print(f"Error reading {file_path}: {e}")
     
     return found_items
+
+def _scan_line_for_todos(line: str, filename: str, line_num: int) -> Optional[str]:
+    """Analyze a single line for TODOs/Notes."""
+    clean_line = line.strip()
+    if not clean_line:
+        return None
+    
+    comment_content = _extract_comment(clean_line)
+    if not comment_content:
+        return None
+        
+    matched = _match_pattern(comment_content)
+    if matched:
+        tag, msg = matched
+        return f"[{tag}] {filename}:{line_num} {msg}"
+    return None
 
 
 def _extract_comment(line: str) -> Optional[str]:

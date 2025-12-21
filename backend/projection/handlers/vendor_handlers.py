@@ -24,25 +24,38 @@ def handle_vendor_negotiation_initiated(state: AgentState, event: VendorNegotiat
 def handle_vendor_negotiation_result(state: AgentState, event: VendorNegotiationResult) -> AgentState:
     """Update vendor relationship based on negotiation outcome."""
     new_state = deepcopy(state)
-    if event.location_id in new_state.locations:
-        location = new_state.locations[event.location_id]
-        vendor_rel = location.vendor_relationships.get(event.vendor_id)
-        if vendor_rel is None:
-            vendor_rel = VendorRelationship(
-                vendor_id=event.vendor_id,
-                tier=VendorTier.TIER_1,
-                weeks_at_tier=0,
-                payment_history=[],
-                is_exclusive_contract=False,
-            )
-            location.vendor_relationships[event.vendor_id] = vendor_rel
-        if event.negotiation_succeeded:
-            vendor_rel.weeks_at_tier += 1
-            # Apply discount if provided (e.g., 0.1 means 10% off)
-            if event.proposed_discount > 0:
-                # Baseline is 1.0, so 0.1 discount makes it 0.9
-                vendor_rel.current_price_per_unit = max(0.1, 1.0 - event.proposed_discount)
+    if event.location_id not in new_state.locations:
+        return new_state
+
+    location = new_state.locations[event.location_id]
+    vendor_rel = _get_or_create_relationship(location, event.vendor_id, event.location_id)
+    
+    if event.negotiation_succeeded:
+        _handle_negotiation_success(vendor_rel, event.proposed_discount)
+        
     return new_state
+
+def _get_or_create_relationship(location: Any, vendor_id: str, location_id: str) -> VendorRelationship:
+    """Get existing relationship or create a new default one."""
+    vendor_rel = location.vendor_relationships.get(vendor_id)
+    if vendor_rel is None:
+        vendor_rel = VendorRelationship(
+            vendor_id=vendor_id,
+            tier=VendorTier.TIER_1,
+            weeks_at_tier=0,
+            payment_history=[],
+            is_exclusive_contract=False,
+        )
+        location.vendor_relationships[vendor_id] = vendor_rel
+    return vendor_rel
+
+def _handle_negotiation_success(vendor_rel: VendorRelationship, discount: float):
+    """Apply success effects to the relationship."""
+    vendor_rel.weeks_at_tier += 1
+    # Apply discount if provided (e.g., 0.1 means 10% off)
+    if discount > 0:
+        # Baseline is 1.0, so 0.1 discount makes it 0.9
+        vendor_rel.current_price_per_unit = max(0.1, 1.0 - discount)
 
 
 def handle_exclusive_contract_signed(state: AgentState, event: ExclusiveContractSigned) -> AgentState:

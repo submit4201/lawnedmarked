@@ -58,7 +58,7 @@ def _event_brief(event: Any) -> Dict[str, Any]:
     return _to_serializable(data)
 
 
-def _build_player_turn_packet(state: Any, recent_events: List[Any]) -> Dict[str, Any]:
+def _build_location_data(state: Any) -> List[Dict[str, Any]]:
     locs = []
     for loc_id, loc in (getattr(state, "locations", {}) or {}).items():
         pricing = getattr(loc, "active_pricing", {}) or {}
@@ -73,7 +73,6 @@ def _build_player_turn_packet(state: Any, recent_events: List[Any]) -> Dict[str,
                 "equipment_count": len(equipment) if hasattr(equipment, "__len__") else None,
                 "staff_count": len(staff) if hasattr(staff, "__len__") else None,
                 "pricing": {
-                    # Common services only, to keep this compact.
                     k: pricing.get(k)
                     for k in ("StandardWash", "PremiumWash", "Dry", "VendingItems")
                     if k in pricing
@@ -84,22 +83,30 @@ def _build_player_turn_packet(state: Any, recent_events: List[Any]) -> Dict[str,
                 },
             }
         )
+    return locs
 
+def _build_finances_data(state: Any) -> Dict[str, Any]:
+    return {
+        "cash_balance": getattr(state, "cash_balance", 0.0),
+        "line_of_credit_balance": getattr(state, "line_of_credit_balance", 0.0),
+        "line_of_credit_limit": getattr(state, "line_of_credit_limit", 0.0),
+        "total_debt_owed": getattr(state, "total_debt_owed", 0.0),
+        "current_tax_liability": getattr(state, "current_tax_liability", 0.0),
+    }
+
+def _build_reputation_data(state: Any) -> Dict[str, Any]:
+    return {
+        "social_score": getattr(state, "social_score", 0.0),
+        "regulatory_status": getattr(state, "regulatory_status", ""),
+        "credit_rating": getattr(state, "credit_rating", 0),
+    }
+
+def _build_player_turn_packet(state: Any, recent_events: List[Any]) -> Dict[str, Any]:
     packet = {
         "time": {"week": getattr(state, "current_week", 0), "day": getattr(state, "current_day", 0)},
-        "finances": {
-            "cash_balance": getattr(state, "cash_balance", 0.0),
-            "line_of_credit_balance": getattr(state, "line_of_credit_balance", 0.0),
-            "line_of_credit_limit": getattr(state, "line_of_credit_limit", 0.0),
-            "total_debt_owed": getattr(state, "total_debt_owed", 0.0),
-            "current_tax_liability": getattr(state, "current_tax_liability", 0.0),
-        },
-        "reputation": {
-            "social_score": getattr(state, "social_score", 0.0),
-            "regulatory_status": getattr(state, "regulatory_status", ""),
-            "credit_rating": getattr(state, "credit_rating", 0),
-        },
-        "locations": locs,
+        "finances": _build_finances_data(state),
+        "reputation": _build_reputation_data(state),
+        "locations": _build_location_data(state),
         "recent_events": [_event_brief(e) for e in (recent_events or [])][-10:],
     }
     return _to_serializable(packet)
