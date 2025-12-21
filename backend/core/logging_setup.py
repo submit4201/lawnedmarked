@@ -113,11 +113,11 @@ def cleanup_logs():
                     with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for log in logs_to_zip:
                             zipf.write(log, log.name)
-                    
-                    # ? Consider enabling deletion after zipping for production
-                    # for log in logs_to_zip:
-                    #     os.remove(log)
-                    
+
+                    # Note: In production you may wish to delete the original log files
+                    # after successful archiving to conserve disk space. If you enable
+                    # such behavior, ensure it only runs once per file and handles
+                    # errors robustly.
                     archived_count += len(logs_to_zip)
                     print(f"[LOG_CLEANUP] Archived {len(logs_to_zip)} logs to {zip_name}")
                 except Exception as e:
