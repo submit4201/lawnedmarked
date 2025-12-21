@@ -224,7 +224,6 @@ class FileAppealHandler(CommandHandler):
         """
         fine_id = getattr(command.payload, "fine_id", None)
         appeal_cost = getattr(command.payload, "appeal_cost", None)
-        appeal_argument = getattr(command.payload, "appeal_argument", "")
         
         # Validation
         if not fine_id:

@@ -1,9 +1,7 @@
 import atexit
-import os
 import sys
 import logging
 import zipfile
-import shutil
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
 from pathlib import Path

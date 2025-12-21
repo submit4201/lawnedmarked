@@ -18,13 +18,6 @@ from .aiprojectspro import AzureAIProjectsProvider, AzureAIProjectsConfig
 # Alias for backward compatibility or explicit requests
 LLMProAIProvider = AzureAIProjectsProvider
 LLMProAIConfig = AzureAIProjectsConfig
-try:
-    from backend import auth_config
-except ImportError:
-    try:
-        import auth_config
-    except ImportError:
-        auth_config = None
 
 
 def _parse_extra_json(value: str | None) -> Dict[str, Any]:

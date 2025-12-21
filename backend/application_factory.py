@@ -11,13 +11,11 @@ from __future__ import annotations
 
 from datetime import datetime
 import os
-from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from adjudication.game_master import GameMaster
 from adjudication.judge import Judge
 from command_handlers import ALL_HANDLERS
-from core.events import GameEvent
 from core.models import AgentState, LocationState
 from engine.game_engine import GameEngine
 from infrastructure.action_registry import ActionRegistry
@@ -64,6 +62,8 @@ class ApplicationFactory:
                 # Let dotenv search up the directory tree
                 load_dotenv(find_dotenv=True)
         except Exception:
+            # Environment loading is intentionally best-effort; failures here
+            # must not prevent application startup.
             pass
 
         if event_repository is None:
@@ -202,7 +202,8 @@ class ApplicationFactory:
                         n = int(limit)
                         if n > 0:
                             events = events[-n:]
-                    except Exception:
+                    except (TypeError, ValueError):
+                        # If limit cannot be parsed as a positive integer, ignore it and return all events.
                         pass
                 return {"new_events": [_to_serializable(e) for e in events]}
 

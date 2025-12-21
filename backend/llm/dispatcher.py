@@ -99,7 +99,6 @@ class LLMDispatcher:
     def _extract_tool_calls_from_text(self, text: str) -> list[dict]:
         """Extract <tool_call> tags from text and convert to OpenAI-style tool_calls."""
         import re
-        import json
         import uuid
         
         calls = []
@@ -131,7 +130,8 @@ class LLMDispatcher:
                             else:
                                 # Manual unescape for common cases
                                 json_str = json_str.replace("\\\"", "\"").replace("\\\\", "\\")
-                        except:
+                        except Exception:
+                            # If unescaping fails, fall back to the original JSON substring
                             pass
 
                     data = json.loads(json_str)
@@ -372,10 +372,12 @@ class LLMDispatcher:
 
         tool_names = []
         for t in tools or []:
-            try:
-                tool_names.append(((t or {}).get("function") or {}).get("name"))
-            except Exception:
-                pass
+            name = None
+            if isinstance(t, dict):
+                function = t.get("function")
+                if isinstance(function, dict):
+                    name = function.get("name")
+            tool_names.append(name)
 
         self._audit(
             {
