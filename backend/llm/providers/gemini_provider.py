@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 
@@ -30,7 +30,74 @@ class GeminiProvider(LLMProviderBase):
     def __init__(self, config: GeminiConfig | None = None):
         super().__init__(config or GeminiConfig())
 
-    async def chat(self, request: "ChatRequest") -> dict:
+    def _openai_tools_to_gemini(self, tools: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+        if not tools:
+            return None
+        decls: List[Dict[str, Any]] = []
+        for t in tools:
+            if not isinstance(t, dict):
+                continue
+            if t.get("type") != "function":
+                continue
+            fn = t.get("function") or {}
+            name = fn.get("name")
+            if not name:
+                continue
+            decls.append(
+                {
+                    "name": name,
+                    "description": fn.get("description", "") or "",
+                    "parameters": fn.get("parameters", {"type": "object"}) or {"type": "object"},
+                }
+            )
+        if not decls:
+            return None
+        return [{"functionDeclarations": decls}]
+
+    def _openai_messages_to_gemini(self, messages: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
+        system_parts: List[str] = []
+        contents: List[Dict[str, Any]] = []
+
+        for m in messages or []:
+            role = (m.get("role") or "").strip().lower()
+            content = m.get("content")
+            if content is None:
+                content = ""
+            if not isinstance(content, str):
+                content = json.dumps(content, default=str)
+
+            if role == "system":
+                if content.strip():
+                    system_parts.append(content.strip())
+                continue
+
+            if role == "assistant":
+                g_role = "model"
+            elif role == "user":
+                g_role = "user"
+            elif role == "tool":
+                # Gemini supports function responses, but our runtime uses OpenAI-style tool
+                # messages. Treat as user-visible observation.
+                tool_name = m.get("name")
+                prefix = f"TOOL_RESULT({tool_name}): " if tool_name else "TOOL_RESULT: "
+                content = prefix + content
+                g_role = "user"
+            else:
+                # Fallback: treat unknown roles as user content.
+                g_role = "user"
+
+            contents.append({"role": g_role, "parts": [{"text": content}]})
+
+        return ("\n\n".join(system_parts).strip(), contents)
+
+    async def chat(
+        self,
+        messages: list[dict],
+        tools: Optional[list[dict]] = None,
+        step_idx: Optional[int] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> dict:
         api_key = (self.config.api_key or "").strip()
         if not api_key:
             raise RuntimeError("Gemini api_key is missing (set GEMINI_API_KEY)")
@@ -38,15 +105,24 @@ class GeminiProvider(LLMProviderBase):
         endpoint = (self.config.endpoint or "").rstrip("/")
         model = (self.config.model or "").strip() or "gemini-1.5-flash"
 
-        payload = self._build_payload(request.messages, request.tools)
+        system_instruction, contents = self._openai_messages_to_gemini(messages)
+        gemini_tools = self._openai_tools_to_gemini(tools)
 
-        url = f"{endpoint}/v1beta/models/{model}:generateContent"
-        params = {"key": api_key}
+        payload: Dict[str, Any] = {
+            "contents": contents,
+        }
+        if system_instruction:
+            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        if gemini_tools:
+            payload["tools"] = gemini_tools
 
-        data = await self._make_request(url, params, payload)
-        return self._parse_response(data)
-
-    def _build_payload(self, messages: list[dict], tools: Optional[list[dict]]) -> Dict[str, Any]:
+        # Map some common generation options from config/extra.
+        extra = getattr(self.config, "extra", {}) or {}
+        generation_config: Dict[str, Any] = {}
+        if "temperature" in extra:
+            try:
+                generation_config["temperature"] = float(extra.get("temperature"))
+            except (TypeError, ValueError):
                 # If temperature cannot be parsed as float, skip it
                 pass
         if "max_output_tokens" in extra:
@@ -57,17 +133,17 @@ class GeminiProvider(LLMProviderBase):
                 pass
         if generation_config:
             payload["generationConfig"] = generation_config
-        return payload
 
-    async def _make_request(self, url: str, params: Dict[str, str], payload: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{endpoint}/v1beta/models/{model}:generateContent"
+        params = {"key": api_key}
+
         async with aiohttp.ClientSession() as session:
             async with session.post(url, params=params, json=payload, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                 text = await resp.text()
                 if resp.status >= 400:
                     raise RuntimeError(f"Gemini HTTP {resp.status}: {text[:500]}")
-                return json.loads(text) if text else {}
+                data = json.loads(text) if text else {}
 
-    def _parse_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
         candidates = data.get("candidates") or []
         if not candidates:
             return {"role": "assistant", "content": "", "tool_calls": None}
@@ -101,15 +177,3 @@ class GeminiProvider(LLMProviderBase):
         if tool_calls:
             res["tool_calls"] = tool_calls
         return res
-
-
-def _openai_tools_to_gemini(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
-    if not tools:
-        return None
-    decls: List[Dict[str, Any]] = []
-    for t in tools:
-            g_role = "user"
-
-        contents.append({"role": g_role, "parts": [{"text": content}]})
-
-    return ("\n\n".join(system_parts).strip(), contents)
