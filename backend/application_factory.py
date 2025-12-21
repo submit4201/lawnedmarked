@@ -263,6 +263,7 @@ class ApplicationFactory:
                     if n > 0:
                         events = events[-n:]
                 except (TypeError, ValueError):
+                    # If limit cannot be parsed as a positive integer, ignore it and return all events.
                     pass
             return {"new_events": [_to_serializable(e) for e in events]}
 
