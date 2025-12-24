@@ -100,23 +100,20 @@ class GeminiProvider(LLMProviderBase):
 
     def _build_generation_config(self, extra: dict) -> Dict[str, Any]:
         """Build generation config from extra parameters."""
-        generation_config: Dict[str, Any] = {}
+        config: Dict[str, Any] = {}
         
-        if "temperature" in extra:
+        self._set_config_value(config, extra, "temperature", float, "temperature")
+        self._set_config_value(config, extra, "max_output_tokens", int, "maxOutputTokens")
+        
+        return config
+
+    def _set_config_value(self, config: dict, extra: dict, source_key: str, type_func: type, target_key: str):
+        """Helper to safely set config values."""
+        if source_key in extra:
             try:
-                generation_config["temperature"] = float(extra.get("temperature"))
+                config[target_key] = type_func(extra.get(source_key))
             except (TypeError, ValueError):
-                # If temperature cannot be parsed as float, skip it
                 pass
-        
-        if "max_output_tokens" in extra:
-            try:
-                generation_config["maxOutputTokens"] = int(extra.get("max_output_tokens"))
-            except (TypeError, ValueError):
-                # If max_output_tokens cannot be parsed as int, skip it
-                pass
-        
-        return generation_config
 
     def _build_payload(
         self, 
@@ -158,23 +155,35 @@ class GeminiProvider(LLMProviderBase):
             if not isinstance(p, dict):
                 continue
             
-            # Extract text
-            if "text" in p and isinstance(p.get("text"), str):
-                out_text_parts.append(p.get("text") or "")
+            text = self._extract_text_from_part(p)
+            if text:
+                out_text_parts.append(text)
             
-            # Extract function call
-            fc = p.get("functionCall")
-            if isinstance(fc, dict) and fc.get("name"):
-                tool_calls.append({
-                    "id": f"gemini-fn-{len(tool_calls)+1}",
-                    "type": "function",
-                    "function": {
-                        "name": fc.get("name"),
-                        "arguments": json.dumps(fc.get("args") or {}, ensure_ascii=False),
-                    },
-                })
+            tool_call = self._extract_tool_call_from_part(p, len(tool_calls))
+            if tool_call:
+                tool_calls.append(tool_call)
 
         return out_text_parts, tool_calls
+
+    def _extract_text_from_part(self, part: dict) -> str | None:
+        """Extract text content from a response part."""
+        if "text" in part and isinstance(part.get("text"), str):
+            return part.get("text") or ""
+        return None
+
+    def _extract_tool_call_from_part(self, part: dict, index: int) -> dict | None:
+        """Extract tool call from a response part."""
+        fc = part.get("functionCall")
+        if isinstance(fc, dict) and fc.get("name"):
+            return {
+                "id": f"gemini-fn-{index+1}",
+                "type": "function",
+                "function": {
+                    "name": fc.get("name"),
+                    "arguments": json.dumps(fc.get("args") or {}, ensure_ascii=False),
+                },
+            }
+        return None
 
     def _format_response(self, data: Dict[str, Any]) -> dict:
         """Format Gemini API response to OpenAI-compatible format."""

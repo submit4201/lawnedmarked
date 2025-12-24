@@ -80,9 +80,22 @@ class AzureAIProjectsProvider(LLMProviderBase):
              return {"error": "Failed to create agent version"}
 
         openai_client = self._openai_client
-        
+        payload_messages = self._build_chat_payload(request.messages)
+
+        try:
+            response = openai_client.responses.create(
+                input=payload_messages,
+                extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
+            )
+            return self._parse_chat_response(response)
+        except Exception as e:
+            print(f"[AzureAIProjectsProvider] Chat failed: {e}")
+            raise e
+
+    def _build_chat_payload(self, messages: list[dict]) -> list[dict]:
+        """Build payload messages for the Azure AI Projects client."""
         payload_messages = []
-        for m in request.messages:
+        for m in messages:
             content = m.get("content")
             role = m.get("role")
             
@@ -95,39 +108,33 @@ class AzureAIProjectsProvider(LLMProviderBase):
                 "content": content or ""
             }
             payload_messages.append(item)
+        return payload_messages
 
-        try:
-            response = openai_client.responses.create(
-                input=payload_messages,
-                extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
-            )
-            
-            content = getattr(response, "output_text", "")
-            if not content and hasattr(response, "choices"):
-                 content = response.choices[0].message.content
-                 
-            tool_calls = []
-            if hasattr(response, "choices") and response.choices:
-                msg = response.choices[0].message
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tool_calls.append({
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments
-                            }
-                        })
-            
-            return {
-                "role": "assistant",
-                "content": content or "",
-                "tool_calls": tool_calls
-            }
-        except Exception as e:
-            print(f"[AzureAIProjectsProvider] Chat failed: {e}")
-            raise e
+    def _parse_chat_response(self, response: Any) -> dict:
+        """Parse the response from Azure AI Projects client."""
+        content = getattr(response, "output_text", "")
+        if not content and hasattr(response, "choices"):
+             content = response.choices[0].message.content
+             
+        tool_calls = []
+        if hasattr(response, "choices") and response.choices:
+            msg = response.choices[0].message
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_calls.append({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    })
+        
+        return {
+            "role": "assistant",
+            "content": content or "",
+            "tool_calls": tool_calls
+        }
 
 if __name__ == "__main__":
     # Test block

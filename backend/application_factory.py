@@ -309,10 +309,45 @@ class ApplicationFactory:
         limit = payload.get("limit")
         
         events = game_engine.get_event_log(agent_id)
-        events = ApplicationFactory._filter_events_by_last_id(events, last_event_id)
+        
+        events = ApplicationFactory._filter_events_by_id(events, last_event_id)
         events = ApplicationFactory._apply_event_limit(events, limit)
         
         return {"new_events": [_to_serializable(e) for e in events]}
+
+    @staticmethod
+    def _filter_events_by_id(events: list, last_event_id: str | None) -> list:
+        """Filter events occurring after the given event ID."""
+        if not last_event_id:
+            return events
+            
+        try:
+            # Find index of last_event_id
+            idx = next(
+                i for i, e in enumerate(events) 
+                if getattr(e, "event_id", None) == last_event_id
+            )
+            return events[idx + 1:]
+        except StopIteration:
+            # If ID not found (or list empty), return empty list as standard behavior 
+            # for "give me everything after X" if X isn't in the known history? 
+            # Or should it return everything? Original logic returned [] on StopIteration.
+            return []
+
+    @staticmethod
+    def _apply_event_limit(events: list, limit: Any) -> list:
+        """Apply numerical limit to events list involved."""
+        if limit is None:
+            return events
+            
+        try:
+            n = int(limit)
+            if n > 0:
+                return events[-n:]
+        except (TypeError, ValueError):
+            pass
+            
+        return events
 
     @staticmethod
     def _handle_submit_command(game_engine: GameEngine, payload: Dict[str, Any]) -> Dict[str, Any]:
