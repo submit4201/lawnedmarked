@@ -98,22 +98,22 @@ class GeminiProvider(LLMProviderBase):
 
         return ("\n\n".join(system_parts).strip(), contents)
 
+    # Config key mappings: (source_key, target_key, type_func)
+    _CONFIG_MAPPINGS = [
+        ("temperature", "temperature", float),
+        ("max_output_tokens", "maxOutputTokens", int),
+    ]
+
     def _build_generation_config(self, extra: dict) -> Dict[str, Any]:
         """Build generation config from extra parameters."""
         config: Dict[str, Any] = {}
-        
-        self._set_config_value(config, extra, "temperature", float, "temperature")
-        self._set_config_value(config, extra, "max_output_tokens", int, "maxOutputTokens")
-        
+        for source_key, target_key, type_func in self._CONFIG_MAPPINGS:
+            if source_key in extra:
+                try:
+                    config[target_key] = type_func(extra[source_key])
+                except (TypeError, ValueError):
+                    pass
         return config
-
-    def _set_config_value(self, config: dict, extra: dict, source_key: str, type_func: type, target_key: str):
-        """Helper to safely set config values."""
-        if source_key in extra:
-            try:
-                config[target_key] = type_func(extra.get(source_key))
-            except (TypeError, ValueError):
-                pass
 
     def _build_payload(
         self, 
