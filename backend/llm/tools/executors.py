@@ -4,6 +4,7 @@ from typing import Dict, Any, Callable
 
 from ..sessions import SessionStore
 from .registry import ToolRegistry
+from ..prompt_registry import PromptRegistry
 
 class ToolRouter:
     def __init__(self, session_store: SessionStore, api_client: Callable[[str, Dict[str, Any]], Dict[str, Any]]):
@@ -16,7 +17,37 @@ class ToolRouter:
 
     def get_history(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         agent_id = payload.get("agent_id")
-        return self.api_client("GET_HISTORY", {"agent_id": agent_id, "last_event_id": payload.get("last_event_id")})
+        return self.api_client(
+            "GET_HISTORY",
+            {
+                "agent_id": agent_id,
+                "last_event_id": payload.get("last_event_id"),
+                "limit": payload.get("limit"),
+            },
+        )
+
+    def get_inventory(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        agent_id = payload.get("agent_id")
+        location_id = payload.get("location_id")
+        # We can just get the full state and filter it here, or let the server handle it.
+        # For now, let's assume the server has a GET_INVENTORY endpoint or we use GET_STATE.
+        state_resp = self.api_client("GET_STATE", {"agent_id": agent_id})
+        if "error" in state_resp:
+            return state_resp
+        
+        state = state_resp.get("agent_state", {})
+        locations = state.get("locations", {})
+        if location_id not in locations:
+            return {"error": f"Location {location_id} not found"}
+        
+        loc = locations[location_id]
+        return {
+            "location_id": location_id,
+            "inventory": {
+                "detergent": loc.get("inventory_detergent"),
+                "softener": loc.get("inventory_softener"),
+            }
+        }
 
     def submit_command(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         # payload must include: agent_id, command_name, payload
@@ -52,6 +83,12 @@ class ToolRouter:
             include_schema = bool(payload.get("include_schema", False))
             if name:
                 return ToolRegistry.describe(name=name, include_schema=include_schema)
+            
+            # Use the tool_help.j2 template if available
+            help_text = PromptRegistry.get_system_prompt("tool_help.j2")
+            if help_text:
+                return {"help": help_text}
+            
             return ToolRegistry.list_summary(category=category)
 
         if tool == "get_state":
@@ -59,6 +96,9 @@ class ToolRouter:
 
         if tool == "get_history":
             return self.get_history(payload)
+
+        if tool == "get_inventory":
+            return self.get_inventory(payload)
 
         if tool == "end_of_turn":
             return self.end_of_turn(payload)

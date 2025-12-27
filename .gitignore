@@ -5,7 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+backend/auth_config.py
 # Distribution / packaging
 .Python
 build/
@@ -67,6 +67,10 @@ instance/
 
 # Scrapy stuff:
 .scrapy
+
+# Environment / secrets
+.env
+.env.*
 
 # Sphinx documentation
 docs/_build/
@@ -205,3 +209,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Debug files (project-specific)
+# ! These are temporary debug artifacts that should not be committed
+error.txt
+backend/debug_*.txt
+backend/backend_debug.log
+backend/*_debug.log
+*.debug.log
+backend/IMPLEMENTATION_STATUS.md
+backend/backend_log.txt
+backend/backend/
+test_output_2.txt
+test_output_3.txt
+test_output.txt

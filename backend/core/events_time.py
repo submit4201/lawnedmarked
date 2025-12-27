@@ -1,6 +1,14 @@
 from dataclasses import dataclass, field
 from core.events import GameEvent
 
+
+@dataclass(frozen=True)
+class GameStarted(GameEvent):
+    """Marks the start of a new game/session for an agent."""
+
+    scenario: str = ""
+    event_type: str = field(default="GameStarted")
+
 @dataclass(frozen=True)
 class TimeAdvanced(GameEvent):
     week: int = 0
@@ -55,6 +63,7 @@ class MachineBrokenDown(GameEvent):
 
 
 __all__ = [
+    "GameStarted",
     "TimeAdvanced",
     "DailyRevenueProcessed",
     "WeeklyFixedCostsBilled",

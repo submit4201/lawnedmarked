@@ -5,11 +5,18 @@ Time-based projection handlers (weekly/daily cycles).
 from copy import deepcopy
 from core.models import AgentState
 from core.events import (
+    GameStarted,
     TimeAdvanced,
     DailyRevenueProcessed,
     WeeklyFixedCostsBilled,
     WeeklyWagesBilled,
 )
+
+
+def handle_game_started(state: AgentState, event: GameStarted) -> AgentState:
+    """Initialize/mark start-of-game (mechanical; no business rules)."""
+    new_state = deepcopy(state)
+    return new_state
 
 
 def handle_time_advanced(state: AgentState, event: TimeAdvanced) -> AgentState:
@@ -57,6 +64,7 @@ def handle_weekly_wages_billed(state: AgentState, event: WeeklyWagesBilled) -> A
 
 
 TIME_EVENT_HANDLERS = {
+    "GameStarted": handle_game_started,
     "TimeAdvanced": handle_time_advanced,
     "DailyRevenueProcessed": handle_daily_revenue_processed,
     "WeeklyFixedCostsBilled": handle_weekly_fixed_costs_billed,
@@ -65,6 +73,7 @@ TIME_EVENT_HANDLERS = {
 
 __all__ = [
     "TIME_EVENT_HANDLERS",
+    "handle_game_started",
     "handle_time_advanced",
     "handle_daily_revenue_processed",
     "handle_weekly_fixed_costs_billed",

@@ -30,6 +30,7 @@ from core.commands import (
     MakeEthicalChoiceCommand,
     SubscribeLoyaltyProgramCommand,
     NegotiateVendorDealCommand,
+    CommunicateToAgentCommand,
     SignExclusiveContractCommand,
     CancelVendorContractCommand,
     EnterAllianceCommand,
@@ -61,6 +62,7 @@ _COMMAND_CLASSES = [
     MakeEthicalChoiceCommand,
     SubscribeLoyaltyProgramCommand,
     NegotiateVendorDealCommand,
+    CommunicateToAgentCommand,
     SignExclusiveContractCommand,
     CancelVendorContractCommand,
     EnterAllianceCommand,
@@ -104,9 +106,11 @@ class LLMCommandFactory:
         payload_data = kwargs or {}
         payload_type = getattr(cmd_cls, "payload_type", None)
         if payload_type:
+            # ! Keep the typed payload object - handlers expect .attribute access
             payload_obj = payload_type(**payload_data)
-            payload_data = asdict(payload_obj)
-
+            return cmd_cls(agent_id=agent_id, payload=payload_obj)
+        
+        # Fallback for commands without payload_type
         return cmd_cls(agent_id=agent_id, payload=payload_data)
 
 

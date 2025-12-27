@@ -7,10 +7,17 @@ from core.command_payloads import (
     FileAppealPayload,
     MakeEthicalChoicePayload,
     SubscribeLoyaltyProgramPayload,
+    CommunicateToAgentPayload,
 )
 
 
 # Social & Regulatory domain commands
+
+@dataclass
+class CommunicateToAgentCommand(Command):
+    command_type: str = "COMMUNICATE_TO_AGENT"
+    payload_type: type[CommandPayload] = CommunicateToAgentPayload
+
 
 @dataclass
 class InitiateCharityCommand(Command):
@@ -49,6 +56,7 @@ class SubscribeLoyaltyProgramCommand(Command):
 
 
 __all__ = [
+    "CommunicateToAgentCommand",
     "InitiateCharityCommand",
     "ResolveScandalCommand",
     "FileRegulatoryReportCommand",

@@ -55,6 +55,7 @@ from .social_regulatory_handlers import (
     handle_customer_review_submitted,
     handle_investigation_started,
     handle_investigation_stage_advanced,
+    handle_communication_sent,
 )
 from .vendor_handlers import (
     VENDOR_EVENT_HANDLERS,
@@ -133,6 +134,7 @@ __all__ = [
     "handle_customer_review_submitted",
     "handle_investigation_started",
     "handle_investigation_stage_advanced",
+    "handle_communication_sent",
     # Vendor
     "handle_vendor_negotiation_result",
     "handle_exclusive_contract_signed",

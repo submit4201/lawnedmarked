@@ -54,6 +54,7 @@ class PriceSet(GameEvent):
 @dataclass(frozen=True)
 class MarketingBoostApplied(GameEvent):
     location_id: str = ""
+    campaign_type: str = ""
     marketing_cost: float = 0.0
     customer_attraction_boost: float = 0.0
     duration_weeks: int = 0

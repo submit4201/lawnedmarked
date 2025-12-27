@@ -6,6 +6,7 @@ from typing import List
 from core.commands import (
     CommandHandler,
     Command,
+    CommunicateToAgentCommand,
     InitiateCharityCommand,
     ResolveScandalCommand,
     FileRegulatoryReportCommand,
@@ -22,6 +23,7 @@ from core.events import (
     FundsTransferred,
     DilemmaResolved,
     LoyaltyMemberRegistered,
+    CommunicationSent,
 )
 from core.models import AgentState
 from datetime import datetime
@@ -37,20 +39,18 @@ class InitiateCharityHandler(CommandHandler):
         
         Payload expected:
         {
-            "charity_type": str,  # "Community", "Education", "Environmental"
-            "donation_amount": float,
-            "description": str
+            "charity_name": str,
+            "donation_amount": float
         }
         """
-        charity_type = command.payload.get("charity_type")
-        donation_amount = command.payload.get("donation_amount")
-        description = command.payload.get("description", "")
+        charity_name = getattr(command.payload, "charity_name", None)
+        donation_amount = getattr(command.payload, "donation_amount", None)
         
         # Validation
-        if not charity_type:
-            raise InvalidStateError("Charity type is required")
+        if not charity_name:
+            raise InvalidStateError("Charity name is required")
         
-        if donation_amount <= 0:
+        if donation_amount is None or donation_amount <= 0:
             raise InvalidStateError("Donation amount must be positive")
         
         if state.cash_balance < donation_amount:
@@ -66,9 +66,9 @@ class InitiateCharityHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=donation_amount,
+            amount=-donation_amount,
             transaction_type="EXPENSE",
-            description=f"Charity donation ({charity_type}): {description}",
+            description=f"Charity donation to {charity_name}",
         )
         
         social_event = SocialScoreAdjusted(
@@ -78,7 +78,7 @@ class InitiateCharityHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             adjustment=social_boost,
-            reason=f"Charity initiative: {charity_type}",
+            reason=f"Charity initiative: {charity_name}",
         )
         
         return [funds_event, social_event]
@@ -94,18 +94,20 @@ class ResolveScandalHandler(CommandHandler):
         Payload expected:
         {
             "scandal_id": str,
-            "resolution_cost": float
+            "resolution_strategy": str,  # "PR_CAMPAIGN", "COMPENSATION", "PUBLIC_APOLOGY"
+            "cost": float
         }
         """
-        scandal_id = command.payload.get("scandal_id")
-        resolution_cost = command.payload.get("resolution_cost")
+        scandal_id = getattr(command.payload, "scandal_id", None)
+        strategy = getattr(command.payload, "resolution_strategy", "PUBLIC_APOLOGY")
+        resolution_cost = getattr(command.payload, "cost", 0.0)
         
         # Validation
         if not scandal_id:
             raise InvalidStateError("Scandal ID is required")
         
-        if resolution_cost <= 0:
-            raise InvalidStateError("Resolution cost must be positive")
+        if resolution_cost < 0:
+            raise InvalidStateError("Resolution cost cannot be negative")
         
         if state.cash_balance < resolution_cost:
             raise InsufficientFundsError(f"Insufficient funds to resolve scandal")
@@ -130,9 +132,9 @@ class ResolveScandalHandler(CommandHandler):
             agent_id=state.agent_id,
             timestamp=datetime.now(),
             week=state.current_week,
-            amount=resolution_cost,
+            amount=-resolution_cost,
             transaction_type="EXPENSE",
-            description=f"Scandal resolution: {scandal_id}",
+            description=f"Scandal resolution ({strategy}): {scandal_id}",
         )
         
         social_event = SocialScoreAdjusted(
@@ -142,7 +144,7 @@ class ResolveScandalHandler(CommandHandler):
             timestamp=datetime.now(),
             week=state.current_week,
             adjustment=severity_reduction * 10.0,  # Convert to social points
-            reason=f"Resolved scandal: {scandal_id}",
+            reason=f"Resolved scandal ({strategy}): {scandal_id}",
         )
         
         return [funds_event, social_event]
@@ -161,8 +163,8 @@ class FileRegulatoryReportHandler(CommandHandler):
             "filing_cost": float (optional)
         }
         """
-        report_type = command.payload.get("report_type")
-        filing_cost = command.payload.get("filing_cost", 0.0)
+        report_type = getattr(command.payload, "report_type", None)
+        filing_cost = getattr(command.payload, "filing_cost", 0.0)
         
         # Validation
         if not report_type:
@@ -220,9 +222,8 @@ class FileAppealHandler(CommandHandler):
             "appeal_argument": str
         }
         """
-        fine_id = command.payload.get("fine_id")
-        appeal_cost = command.payload.get("appeal_cost")
-        appeal_argument = command.payload.get("appeal_argument", "")
+        fine_id = getattr(command.payload, "fine_id", None)
+        appeal_cost = getattr(command.payload, "appeal_cost", None)
         
         # Validation
         if not fine_id:
@@ -273,9 +274,9 @@ class MakeEthicalChoiceHandler(CommandHandler):
             "chosen_option_cost": float (optional - cost of ethical choice)
         }
         """
-        dilemma_id = command.payload.get("dilemma_id")
-        choice = command.payload.get("choice")
-        chosen_option_cost = command.payload.get("chosen_option_cost", 0.0)
+        dilemma_id = getattr(command.payload, "dilemma_id", None)
+        choice = getattr(command.payload, "choice", None)
+        chosen_option_cost = getattr(command.payload, "chosen_option_cost", 0.0)
         
         # Validation
         if not dilemma_id or not choice:
@@ -344,9 +345,9 @@ class SubscribeLoyaltyProgramHandler(CommandHandler):
             "expected_member_count": int
         }
         """
-        location_id = command.payload.get("location_id")
-        program_cost = command.payload.get("program_cost")
-        expected_member_count = command.payload.get("expected_member_count", 100)
+        location_id = getattr(command.payload, "location_id", None)
+        program_cost = getattr(command.payload, "program_cost", None)
+        expected_member_count = getattr(command.payload, "expected_member_count", 100)
         
         # Validation
         if location_id not in state.locations:
@@ -387,7 +388,48 @@ class SubscribeLoyaltyProgramHandler(CommandHandler):
         return [funds_event, loyalty_event]
 
 
+class CommunicateToAgentHandler(CommandHandler):
+    """Handler for COMMUNICATE_TO_AGENT command."""
+    
+    def handle(self, state: AgentState, command: CommunicateToAgentCommand) -> List[GameEvent]:
+        """
+        Validate and process communication to another agent or GM.
+        
+        Payload expected:
+        {
+            "recipient_agent_id": str,
+            "message_content": str,
+            "channel": str  # "DIRECT", "PUBLIC", "PROPOSAL"
+        }
+        """
+        recipient_agent_id = getattr(command.payload, "recipient_agent_id", None)
+        message_content = getattr(command.payload, "message_content", None)
+        channel = getattr(command.payload, "channel", "DIRECT")
+        
+        # Validation
+        if not recipient_agent_id:
+            raise InvalidStateError("Recipient agent ID is required")
+        
+        if not message_content:
+            raise InvalidStateError("Message content is required")
+        
+        # Emit: CommunicationSent
+        comm_event = CommunicationSent(
+            event_id=str(uuid.uuid4()),
+            event_type="CommunicationSent",
+            agent_id=state.agent_id,
+            timestamp=datetime.now(),
+            week=state.current_week,
+            target_agent_id=recipient_agent_id,
+            message=message_content,
+            channel=channel,
+        )
+        
+        return [comm_event]
+
+
 SOCIAL_HANDLERS = {
+    "COMMUNICATE_TO_AGENT": CommunicateToAgentHandler(),
     "INITIATE_CHARITY": InitiateCharityHandler(),
     "RESOLVE_SCANDAL": ResolveScandalHandler(),
     "FILE_REGULATORY_REPORT": FileRegulatoryReportHandler(),
