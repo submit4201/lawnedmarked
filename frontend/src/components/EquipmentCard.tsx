@@ -104,6 +104,93 @@ const ConditionRing = ({ condition, status, machineId }: { condition: number, st
     );
 };
 
+// Button sub-components
+interface ActionButtonProps {
+    machineId: string;
+    condition: number;
+    status: StatusConfig;
+    isRepairing: boolean;
+    onMaintain?: (id: string) => void;
+}
+
+const MaintenanceButton = ({ machineId, condition, status, isRepairing, onMaintain }: ActionButtonProps) => {
+    const isDisabled = isRepairing || condition > 95;
+    const buttonText = isRepairing ? 'REPAIR IN PROGRESS' : condition > 95 ? 'OPTIMAL CONDITION' : 'SCHEDULE MAINTENANCE';
+
+    return (
+        <motion.button
+            onClick={(e) => {
+                e.stopPropagation();
+                onMaintain?.(machineId);
+            }}
+            disabled={isDisabled}
+            className={`
+                w-full mt-4 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider
+                transition-all duration-300
+                ${isDisabled
+                    ? 'bg-steel/20 text-slate cursor-not-allowed'
+                    : `bg-${status.color}/10 text-${status.color} border border-${status.color}/30
+                       hover:bg-${status.color}/20 hover:border-${status.color}/50`
+                }
+            `}
+            whileHover={!isDisabled ? { scale: 1.02 } : {}}
+            whileTap={!isDisabled ? { scale: 0.98 } : {}}
+        >
+            {buttonText}
+        </motion.button>
+    );
+};
+
+const EmergencyRepairButton = ({ machineId, onFix }: { machineId: string; onFix: (id: string) => void }) => (
+    <motion.button
+        onClick={(e) => {
+            e.stopPropagation();
+            onFix(machineId);
+        }}
+        className="w-full mt-2 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider
+            bg-crimson/20 text-crimson border border-crimson/50
+            hover:bg-crimson/30 hover:border-crimson transition-all duration-300"
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        animate={{
+            boxShadow: ['0 0 5px #ff3b30', '0 0 15px #ff3b30', '0 0 5px #ff3b30']
+        }}
+        transition={{ duration: 1, repeat: Infinity }}
+    >
+        ⚡ EMERGENCY REPAIR
+    </motion.button>
+);
+
+const SellButton = ({ machineId, condition, onSell }: { machineId: string; condition: number; onSell: (id: string) => void }) => (
+    <motion.button
+        onClick={(e) => {
+            e.stopPropagation();
+            onSell(machineId);
+        }}
+        className="w-full mt-2 py-1.5 rounded font-mono text-[10px] uppercase tracking-wider
+            bg-white/5 text-slate-400 border border-white/10
+            hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-300
+            opacity-50 hover:opacity-100"
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+    >
+        Sell Unit (~${Math.round(1000 * (condition / 100))})
+    </motion.button>
+);
+
+const CriticalBadge = () => (
+    <motion.div
+        className="absolute -top-2 -right-2 px-2 py-1 rounded-full bg-crimson text-white text-[8px] font-bold uppercase"
+        animate={{
+            scale: [1, 1.1, 1],
+            boxShadow: ['0 0 10px #ff3b30', '0 0 20px #ff3b30', '0 0 10px #ff3b30']
+        }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+    >
+        CRITICAL
+    </motion.div>
+);
+
 export const EquipmentCard = ({ machine, onMaintain, onFix, onSell }: EquipmentCardProps) => {
     const status = useMachineStatus(machine);
     const StatusIcon = status.icon;
@@ -116,11 +203,11 @@ export const EquipmentCard = ({ machine, onMaintain, onFix, onSell }: EquipmentC
             whileHover={{ scale: 1.02, y: -2 }}
             whileTap={{ scale: 0.98 }}
             className={`
-        glass-card relative overflow-visible cursor-pointer
-        ${isBroken ? 'border-crimson/30' : 'border-white/10'}
-        hover:border-${status.color}/50
-        transition-colors duration-300
-      `}
+                glass-card relative overflow-visible cursor-pointer
+                ${isBroken ? 'border-crimson/30' : 'border-white/10'}
+                hover:border-${status.color}/50
+                transition-colors duration-300
+            `}
         >
             <motion.div
                 className={`absolute inset-0 rounded-xl bg-gradient-to-br ${status.gradient} opacity-0`}
@@ -144,9 +231,9 @@ export const EquipmentCard = ({ machine, onMaintain, onFix, onSell }: EquipmentC
 
                     <div className="flex items-center gap-2">
                         <div className={`
-              flex items-center gap-1.5 px-2 py-1 rounded-md
-              bg-${status.color}/10 border border-${status.color}/30
-            `}>
+                            flex items-center gap-1.5 px-2 py-1 rounded-md
+                            bg-${status.color}/10 border border-${status.color}/30
+                        `}>
                             <StatusIcon size={12} className={`text-${status.color}`} />
                             <span className={`text-xs font-mono font-bold text-${status.color}`}>
                                 {status.label}
@@ -163,78 +250,23 @@ export const EquipmentCard = ({ machine, onMaintain, onFix, onSell }: EquipmentC
                 </div>
             </div>
 
-            <motion.button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onMaintain?.(machine.machine_id);
-                }}
-                disabled={isRepairing || condition > 95}
-                className={`
-          w-full mt-4 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider
-          transition-all duration-300
-          ${isRepairing || condition > 95
-                        ? 'bg-steel/20 text-slate cursor-not-allowed'
-                        : `bg-${status.color}/10 text-${status.color} border border-${status.color}/30
-               hover:bg-${status.color}/20 hover:border-${status.color}/50`
-                    }
-        `}
-                whileHover={!(isRepairing || condition > 95) ? { scale: 1.02 } : {}}
-                whileTap={!(isRepairing || condition > 95) ? { scale: 0.98 } : {}}
-            >
-                {isRepairing ? 'REPAIR IN PROGRESS' : condition > 95 ? 'OPTIMAL CONDITION' : 'SCHEDULE MAINTENANCE'}
-            </motion.button>
+            <MaintenanceButton
+                machineId={machine.machine_id}
+                condition={condition}
+                status={status}
+                isRepairing={isRepairing}
+                onMaintain={onMaintain}
+            />
 
-            {/* Emergency Repair for broken machines */}
             {isBroken && onFix && (
-                <motion.button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onFix(machine.machine_id);
-                    }}
-                    className="w-full mt-2 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider
-                        bg-crimson/20 text-crimson border border-crimson/50
-                        hover:bg-crimson/30 hover:border-crimson transition-all duration-300"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    animate={{
-                        boxShadow: ['0 0 5px #ff3b30', '0 0 15px #ff3b30', '0 0 5px #ff3b30']
-                    }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                >
-                    ⚡ EMERGENCY REPAIR
-                </motion.button>
+                <EmergencyRepairButton machineId={machine.machine_id} onFix={onFix} />
             )}
 
-            {/* Sell button - appears on all equipment */}
             {onSell && (
-                <motion.button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSell(machine.machine_id);
-                    }}
-                    className="w-full mt-2 py-1.5 rounded font-mono text-[10px] uppercase tracking-wider
-                        bg-white/5 text-slate-400 border border-white/10
-                        hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-300
-                        opacity-50 hover:opacity-100"
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                >
-                    Sell Unit (~${Math.round(1000 * (condition / 100))})
-                </motion.button>
+                <SellButton machineId={machine.machine_id} condition={condition} onSell={onSell} />
             )}
 
-            {isBroken && (
-                <motion.div
-                    className="absolute -top-2 -right-2 px-2 py-1 rounded-full bg-crimson text-white text-[8px] font-bold uppercase"
-                    animate={{
-                        scale: [1, 1.1, 1],
-                        boxShadow: ['0 0 10px #ff3b30', '0 0 20px #ff3b30', '0 0 10px #ff3b30']
-                    }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                >
-                    CRITICAL
-                </motion.div>
-            )}
+            {isBroken && <CriticalBadge />}
         </motion.div>
     );
 };

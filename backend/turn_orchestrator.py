@@ -193,20 +193,37 @@ class TurnOrchestrator:
 
     def _run_autonomous_events(self, agent_id: str, new_day: int, new_week: int) -> List[Any]:
         state = self.game_engine.get_current_state(agent_id)
-        generated_events = []
-        for location_id in list(state.locations.keys()):
-            generated_events.extend(AutonomousSimulation.process_daily_tick(state, location_id))
-
-            if new_day == 0:
-                generated_events.extend(AutonomousSimulation.process_weekly_costs(state, location_id))
-                generated_events.extend(AutonomousSimulation.process_machine_wear(state, location_id))
-
-        if new_day == 0:
-            generated_events.extend(AutonomousSimulation.process_scandal_decay(state))
-            if new_week > 0 and (new_week % 4) == 0:
-                generated_events.extend(AutonomousSimulation.process_monthly_interest(state))
+        events = []
         
-        return generated_events
+        # Process each location
+        for location_id in list(state.locations.keys()):
+            events.extend(self._process_location_daily(state, location_id))
+            if new_day == 0:
+                events.extend(self._process_location_weekly(state, location_id))
+
+        # Global weekly effects
+        if new_day == 0:
+            events.extend(self._process_global_weekly(state, new_week))
+        
+        return events
+
+    def _process_location_daily(self, state: Any, location_id: str) -> List[Any]:
+        """Process daily tick for a single location."""
+        return AutonomousSimulation.process_daily_tick(state, location_id)
+
+    def _process_location_weekly(self, state: Any, location_id: str) -> List[Any]:
+        """Process weekly costs and wear for a single location."""
+        events = []
+        events.extend(AutonomousSimulation.process_weekly_costs(state, location_id))
+        events.extend(AutonomousSimulation.process_machine_wear(state, location_id))
+        return events
+
+    def _process_global_weekly(self, state: Any, new_week: int) -> List[Any]:
+        """Process global weekly effects like scandal decay and interest."""
+        events = AutonomousSimulation.process_scandal_decay(state)
+        if new_week > 0 and (new_week % 4) == 0:
+            events.extend(AutonomousSimulation.process_monthly_interest(state))
+        return events
 
     async def _run_gm_turn(self, agent_id: str) -> Any:
         if self.llm_dispatcher is None:

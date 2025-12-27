@@ -50,7 +50,19 @@ class HumanProvider(LLMProviderBase):
             "metadata": {"is_human": True}
         }
 
-def _create_local_provider(name, api_key, endpoint, model, extra):
+from dataclasses import dataclass, field
+
+@dataclass
+class ProviderContext:
+    """Encapsulates provider configuration gathered from environment."""
+    name: str
+    api_key: str
+    endpoint: str
+    model: str
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+
+def _create_local_provider(ctx: ProviderContext):
     cfg = localConfig()
     cfg.api_key = os.getenv("LOCAL_api_key", cfg.api_key)
     cfg.endpoint = (os.getenv("LOCAL_base_url", os.getenv("LOCAL_ENDPOINT", cfg.endpoint)) or "").strip()
@@ -59,65 +71,64 @@ def _create_local_provider(name, api_key, endpoint, model, extra):
     endpoint_lower = (cfg.endpoint or "").lower()
     if any(bad in endpoint_lower for bad in ("localhost:8000", "127.0.0.1:8000")):
         print(f"[LLM][local][warn] LOCAL endpoint appears to point at root backend: {cfg.endpoint}")
-    cfg.extra.update(extra)
+    cfg.extra.update(ctx.extra)
     return LocalProvider(config=cfg), f"LocalProvider:{cfg.model} @ {cfg.endpoint}"
 
-def _create_ollama_provider(name, api_key, endpoint, model, extra):
+def _create_ollama_provider(ctx: ProviderContext):
     cfg = OllamaConfig()
-    cfg.endpoint = endpoint or cfg.endpoint
-    cfg.model = model or cfg.model
-    cfg.api_key = api_key or cfg.api_key
-    cfg.extra.update(extra)
+    cfg.endpoint = ctx.endpoint or cfg.endpoint
+    cfg.model = ctx.model or cfg.model
+    cfg.api_key = ctx.api_key or cfg.api_key
+    cfg.extra.update(ctx.extra)
     return OllamaProvider(config=cfg), f"OllamaProvider:{cfg.model} @ {cfg.endpoint}"
 
-def _create_lmstudio_provider(name, api_key, endpoint, model, extra):
+def _create_lmstudio_provider(ctx: ProviderContext):
     cfg = LMStudioConfig()
-    cfg.endpoint = endpoint or cfg.endpoint
-    cfg.model = model or cfg.model
-    cfg.api_key = api_key or cfg.api_key
-    cfg.extra.update(extra)
+    cfg.endpoint = ctx.endpoint or cfg.endpoint
+    cfg.model = ctx.model or cfg.model
+    cfg.api_key = ctx.api_key or cfg.api_key
+    cfg.extra.update(ctx.extra)
     return LMStudioProvider(config=cfg), f"LMStudioProvider:{cfg.model} @ {cfg.endpoint}"
 
-def _create_gemini_provider(name, api_key, endpoint, model, extra):
+def _create_gemini_provider(ctx: ProviderContext):
     cfg = GeminiConfig()
-    cfg.api_key = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", api_key or cfg.api_key))
-    cfg.endpoint = endpoint or cfg.endpoint
-    cfg.model = model or cfg.model
-    cfg.extra.update(extra)
+    cfg.api_key = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ctx.api_key or cfg.api_key))
+    cfg.endpoint = ctx.endpoint or cfg.endpoint
+    cfg.model = ctx.model or cfg.model
+    cfg.extra.update(ctx.extra)
     return GeminiProvider(config=cfg), f"GeminiProvider:{cfg.model} @ {cfg.endpoint}"
 
-def _create_azure_projects_provider(name, api_key, endpoint, model, extra):
+def _create_azure_projects_provider(ctx: ProviderContext):
     cfg = AzureAIProjectsConfig()
-    # Ensure keys are respected if passed
-    cfg.api_key = api_key or cfg.api_key
-    cfg.endpoint = endpoint or cfg.endpoint
-    cfg.model = model or "gpt-5-nano"
-    cfg.extra.update(extra)
-    return AzureAIProjectsProvider(config=cfg), f"AzureAIProjectsProvider({name}):{cfg.model} @ {cfg.endpoint}"
+    cfg.api_key = ctx.api_key or cfg.api_key
+    cfg.endpoint = ctx.endpoint or cfg.endpoint
+    cfg.model = ctx.model or "gpt-5-nano"
+    cfg.extra.update(ctx.extra)
+    return AzureAIProjectsProvider(config=cfg), f"AzureAIProjectsProvider({ctx.name}):{cfg.model} @ {cfg.endpoint}"
 
-def _create_azure_inference_provider(name, api_key, endpoint, model, extra):
+def _create_azure_inference_provider(ctx: ProviderContext):
     cfg = AzureAIInferenceConfig()
-    cfg.api_key = api_key
-    cfg.endpoint = endpoint
-    cfg.model = model
-    cfg.extra.update(extra)
-    return AzureAIInferenceProvider(config=cfg), f"AzureAIInferenceProvider({name}):{cfg.model} @ {cfg.endpoint}"
+    cfg.api_key = ctx.api_key
+    cfg.endpoint = ctx.endpoint
+    cfg.model = ctx.model
+    cfg.extra.update(ctx.extra)
+    return AzureAIInferenceProvider(config=cfg), f"AzureAIInferenceProvider({ctx.name}):{cfg.model} @ {cfg.endpoint}"
 
-def _create_azure_openai_provider(name, api_key, endpoint, model, extra):
+def _create_azure_openai_provider(ctx: ProviderContext):
     cfg = AzureOpenAIConfig()
-    cfg.api_key = api_key
-    cfg.endpoint = endpoint
-    cfg.model = model
-    cfg.extra.update(extra)
-    return AzureOpenAIProvider(config=cfg), f"AzureOpenAIProvider({name}):{cfg.model} @ {cfg.endpoint}"
+    cfg.api_key = ctx.api_key
+    cfg.endpoint = ctx.endpoint
+    cfg.model = ctx.model
+    cfg.extra.update(ctx.extra)
+    return AzureOpenAIProvider(config=cfg), f"AzureOpenAIProvider({ctx.name}):{cfg.model} @ {cfg.endpoint}"
 
-def _create_openai_provider(name, api_key, endpoint, model, extra):
+def _create_openai_provider(ctx: ProviderContext):
     cfg = OpenAIConfig()
-    cfg.api_key = api_key
-    cfg.endpoint = endpoint
-    cfg.model = model
-    cfg.extra.update(extra)
-    return OpenAIProvider(config=cfg), f"OpenAIProvider({name}):{cfg.model or 'default'} @ {cfg.endpoint or 'openai.com'}"
+    cfg.api_key = ctx.api_key
+    cfg.endpoint = ctx.endpoint
+    cfg.model = ctx.model
+    cfg.extra.update(ctx.extra)
+    return OpenAIProvider(config=cfg), f"OpenAIProvider({ctx.name}):{cfg.model or 'default'} @ {cfg.endpoint or 'openai.com'}"
 
 
 def create_provider_from_env(name: str | None = None) -> tuple[LLMProviderBase, str]:
@@ -129,7 +140,41 @@ def create_provider_from_env(name: str | None = None) -> tuple[LLMProviderBase, 
     if name == "human":
         return HumanProvider(), "HumanPlayer"
 
-    # 1. Gather configuration
+    # 1. Gather configuration into ProviderContext
+    ctx = _build_provider_context(name)
+
+    # Registry of explicit providers
+    registry = {
+        "local": _create_local_provider,
+        "ollama": _create_ollama_provider,
+        "lmstudio": _create_lmstudio_provider,
+        "gemini": _create_gemini_provider,
+        "projects": _create_azure_projects_provider,
+        "azure_openai": _create_azure_openai_provider,
+        "azure": _create_azure_openai_provider, # alias
+        "azure_ai_inference": _create_azure_inference_provider,
+    }
+
+    if name in registry:
+        return registry[name](ctx)
+
+    # 3. Dynamic Type Detection
+    url = (ctx.endpoint or "").lower()
+    if any(x in url for x in ["openai.azure.com", "cognitiveservices.azure.com"]):
+         return _create_azure_openai_provider(ctx)
+
+    if any(x in url for x in ["models.ai.azure.com", "services.ai.azure.com"]):
+         return _create_azure_inference_provider(ctx)
+
+    # Default to OpenAI
+    if ctx.endpoint or ctx.api_key:
+         return _create_openai_provider(ctx)
+
+    return MockLLM(), f"MockLLM (unknown provider {name})"
+
+
+def _build_provider_context(name: str) -> ProviderContext:
+    """Build ProviderContext from environment variables."""
     # For azure_openai, also check AZURE_ prefix as fallback
     if name in ("azure_openai", "azure"):
         api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_api_key") or os.getenv("AZURE_API_KEY") or ""
@@ -145,31 +190,4 @@ def create_provider_from_env(name: str | None = None) -> tuple[LLMProviderBase, 
     if api_version:
         extra["api_version"] = api_version
 
-    # Registry of explicit providers
-    registry = {
-        "local": _create_local_provider,
-        "ollama": _create_ollama_provider,
-        "lmstudio": _create_lmstudio_provider,
-        "gemini": _create_gemini_provider,
-        "projects": _create_azure_projects_provider,
-        "azure_openai": _create_azure_openai_provider,
-        "azure": _create_azure_openai_provider, # alias
-        "azure_ai_inference": _create_azure_inference_provider,
-    }
-
-    if name in registry:
-        return registry[name](name, api_key, endpoint, model, extra)
-
-    # 3. Dynamic Type Detection
-    url = (endpoint or "").lower()
-    if any(x in url for x in ["openai.azure.com", "cognitiveservices.azure.com"]):
-         return _create_azure_openai_provider(name, api_key, endpoint, model, extra)
-
-    if any(x in url for x in ["models.ai.azure.com", "services.ai.azure.com"]):
-         return _create_azure_inference_provider(name, api_key, endpoint, model, extra)
-
-    # Default to OpenAI
-    if endpoint or api_key:
-         return _create_openai_provider(name, api_key, endpoint, model, extra)
-
-    return MockLLM(), f"MockLLM (unknown provider {name})"
+    return ProviderContext(name=name, api_key=api_key, endpoint=endpoint, model=model, extra=extra)

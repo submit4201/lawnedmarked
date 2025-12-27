@@ -16,7 +16,8 @@ import { OperationsView } from './views/OperationsView.tsx';
 import { FinanceView } from './views/FinanceView.tsx';
 import { StrategyView } from './views/StrategyView.tsx';
 import { LegalView } from './views/LegalView.tsx';
-import { TrendingUp, LayoutGrid, Radio } from 'lucide-react';
+import { HRView } from './views/HRView.tsx';
+import { TrendingUp, LayoutGrid, Radio, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Placeholder views for empty states
@@ -59,6 +60,9 @@ function App() {
         break;
       case 'l':
         setCurrentView('LEGAL');
+        break;
+      case 'h':
+        setCurrentView('HR');
         break;
       case ' ': // Spacebar to end turn
         e.preventDefault();
@@ -199,6 +203,7 @@ function App() {
               {currentView === 'FINANCE' && <FinanceView selectedAgent={selectedAgent} />}
               {currentView === 'STRATEGY' && <StrategyView selectedAgent={selectedAgent} />}
               {currentView === 'LEGAL' && <LegalView selectedAgent={selectedAgent} />}
+              {currentView === 'HR' && <HRView selectedAgent={selectedAgent} />}
               {currentView === 'OBSERVER' && <PlaceholderView title="Observer Console" icon={LayoutGrid} />}
             </motion.div>
           </AnimatePresence>

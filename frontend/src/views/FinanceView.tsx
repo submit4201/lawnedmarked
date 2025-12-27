@@ -112,6 +112,22 @@ export const FinanceView = ({ selectedAgent }: { selectedAgent: string }) => {
                     ))}
                 </div>
             </div>
+
+            {/* LOAN REQUEST */}
+            <div className="col-span-12 md:col-span-6 glass-card bg-black/40 p-6">
+                <h2 className="text-xl font-display text-white mb-4 flex items-center gap-2">
+                    💰 Capital Access
+                </h2>
+                <LoanPanel selectedAgent={selectedAgent} />
+            </div>
+
+            {/* MARKETING CAMPAIGNS */}
+            <div className="col-span-12 md:col-span-6 glass-card bg-black/40 p-6">
+                <h2 className="text-xl font-display text-white mb-4 flex items-center gap-2">
+                    📢 Marketing Campaigns
+                </h2>
+                <MarketingPanel selectedAgent={selectedAgent} />
+            </div>
         </div>
     );
 };
@@ -123,8 +139,8 @@ const PricingSlider = ({ serviceType, selectedAgent }: { serviceType: string, se
     const handleUpdate = async () => {
         setLoading(true);
         await GameService.submitCommand(selectedAgent, 'SET_PRICE', {
-            service_type: serviceType.toUpperCase(),
-            price: price
+            service_name: serviceType.toUpperCase(),
+            new_price: price
         });
         setLoading(false);
     };
@@ -186,8 +202,8 @@ const LoanPanel = ({ selectedAgent }: { selectedAgent: string }) => {
                         key={type}
                         onClick={() => setLoanType(type)}
                         className={`p-2 text-xs rounded border transition-colors ${loanType === type
-                                ? 'bg-neon-green/20 border-neon-green text-neon-green'
-                                : 'border-white/20 text-slate-400 hover:border-white/40'
+                            ? 'bg-neon-green/20 border-neon-green text-neon-green'
+                            : 'border-white/20 text-slate-400 hover:border-white/40'
                             }`}
                     >
                         <div className="font-bold">{loanInfo[type].desc}</div>
@@ -233,7 +249,6 @@ const MarketingPanel = ({ selectedAgent }: { selectedAgent: string }) => {
 
     const handleInvest = async (campaignType: string, cost: number) => {
         await GameService.submitCommand(selectedAgent, 'INVEST_IN_MARKETING', {
-            location_id: 'LOC_001',  // Default location
             campaign_type: campaignType,
             cost: cost
         });

@@ -2,9 +2,8 @@ import { useState } from 'react';
 
 import { useGameStore } from '../store/gameStore';
 import { EquipmentCard } from '../components/EquipmentCard';
-import { LayoutGrid, Plus, Package } from 'lucide-react';
+import { LayoutGrid } from 'lucide-react';
 import { GameService } from '../services/gameService';
-import { motion } from 'framer-motion';
 
 export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => {
     const game = useGameStore();
@@ -22,7 +21,9 @@ export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => 
         if (loc) {
             await GameService.submitCommand(selectedAgent, 'FIX_MACHINE', {
                 location_id: loc.location_id,
-                machine_id: machineId
+                machine_id: machineId,
+                maintenance_cost: 500,
+                new_condition: 100
             });
             GameService.fetchState(selectedAgent);
         }
@@ -31,9 +32,12 @@ export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => 
     const handleSell = async (machineId: string) => {
         const loc = Object.values(game.locations).find(l => l.equipment[machineId]);
         if (loc) {
+            const machine = loc.equipment[machineId];
+            const salePrice = Math.round(1000 * ((machine?.condition || 50) / 100));
             await GameService.submitCommand(selectedAgent, 'SELL_EQUIPMENT', {
                 location_id: loc.location_id,
-                machine_id: machineId
+                machine_id: machineId,
+                sale_price: salePrice
             });
             GameService.fetchState(selectedAgent);
         }
@@ -43,7 +47,8 @@ export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => 
         await GameService.submitCommand(selectedAgent, 'BUY_EQUIPMENT', {
             location_id: locationId,
             equipment_type: equipmentType,
-            vendor_id: 'COMMERCIAL_SUPPLIER'
+            vendor_id: 'COMMERCIAL_SUPPLIER',
+            quantity: 1
         });
         GameService.fetchState(selectedAgent);
     };
