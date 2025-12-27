@@ -135,55 +135,64 @@ def create_provider_from_env(name: str | None = None) -> tuple[LLMProviderBase, 
     """Create a provider from environment variables dynamically."""
     name = (name or os.getenv("LLM_PROVIDER") or "local").strip().lower()
 
+    # Special providers that don't need context
     if name == "mock":
         return MockLLM(), "MockLLM"
     if name == "human":
         return HumanProvider(), "HumanPlayer"
 
-    # 1. Gather configuration into ProviderContext
     ctx = _build_provider_context(name)
 
-    # Registry of explicit providers
-    registry = {
-        "local": _create_local_provider,
-        "ollama": _create_ollama_provider,
-        "lmstudio": _create_lmstudio_provider,
-        "gemini": _create_gemini_provider,
-        "projects": _create_azure_projects_provider,
-        "azure_openai": _create_azure_openai_provider,
-        "azure": _create_azure_openai_provider, # alias
-        "azure_ai_inference": _create_azure_inference_provider,
-    }
+    # Registry lookup
+    if name in _PROVIDER_REGISTRY:
+        return _PROVIDER_REGISTRY[name](ctx)
 
-    if name in registry:
-        return registry[name](ctx)
+    # Dynamic Type Detection via URL patterns
+    detected = _detect_provider_from_url(ctx.endpoint)
+    if detected:
+        return detected(ctx)
 
-    # 3. Dynamic Type Detection
-    url = (ctx.endpoint or "").lower()
-    if any(x in url for x in ["openai.azure.com", "cognitiveservices.azure.com"]):
-         return _create_azure_openai_provider(ctx)
-
-    if any(x in url for x in ["models.ai.azure.com", "services.ai.azure.com"]):
-         return _create_azure_inference_provider(ctx)
-
-    # Default to OpenAI
+    # Default to OpenAI if credentials exist
     if ctx.endpoint or ctx.api_key:
-         return _create_openai_provider(ctx)
+        return _create_openai_provider(ctx)
 
     return MockLLM(), f"MockLLM (unknown provider {name})"
 
 
+# Provider registry for explicit names
+_PROVIDER_REGISTRY = {
+    "local": _create_local_provider,
+    "ollama": _create_ollama_provider,
+    "lmstudio": _create_lmstudio_provider,
+    "gemini": _create_gemini_provider,
+    "projects": _create_azure_projects_provider,
+    "azure_openai": _create_azure_openai_provider,
+    "azure": _create_azure_openai_provider,
+    "azure_ai_inference": _create_azure_inference_provider,
+}
+
+# URL pattern → provider mapping for dynamic detection
+_URL_PATTERNS = [
+    (["openai.azure.com", "cognitiveservices.azure.com"], _create_azure_openai_provider),
+    (["models.ai.azure.com", "services.ai.azure.com"], _create_azure_inference_provider),
+]
+
+
+def _detect_provider_from_url(endpoint: str):
+    """Detect provider type from URL patterns."""
+    url = (endpoint or "").lower()
+    for patterns, creator in _URL_PATTERNS:
+        if any(p in url for p in patterns):
+            return creator
+    return None
+
+
 def _build_provider_context(name: str) -> ProviderContext:
     """Build ProviderContext from environment variables."""
-    # For azure_openai, also check AZURE_ prefix as fallback
     if name in ("azure_openai", "azure"):
-        api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_api_key") or os.getenv("AZURE_API_KEY") or ""
-        endpoint = os.getenv("AZURE_OPENAI_BASE_URL") or os.getenv("AZURE_base_url") or os.getenv("AZURE_ENDPOINT") or ""
-        model = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv("AZURE_deployment_name") or os.getenv("AZURE_MODEL") or ""
+        api_key, endpoint, model = _get_azure_env_vars()
     else:
-        api_key = _get_env(name, "api_key", "")
-        endpoint = (_get_env(name, "base_url", _get_env(name, "endpoint", "")) or "").strip()
-        model = _get_env(name, "model", _get_env(name, "deployment", _get_env(name, "deployment_name", "")))
+        api_key, endpoint, model = _get_generic_env_vars(name)
     
     extra = _parse_extra_json(os.getenv("LLM_EXTRA_JSON"))
     api_version = _get_env(name, "api_version") or os.getenv("AZURE_api_version")
@@ -191,3 +200,19 @@ def _build_provider_context(name: str) -> ProviderContext:
         extra["api_version"] = api_version
 
     return ProviderContext(name=name, api_key=api_key, endpoint=endpoint, model=model, extra=extra)
+
+
+def _get_azure_env_vars() -> tuple[str, str, str]:
+    """Get Azure-specific environment variables."""
+    api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_api_key") or os.getenv("AZURE_API_KEY") or ""
+    endpoint = os.getenv("AZURE_OPENAI_BASE_URL") or os.getenv("AZURE_base_url") or os.getenv("AZURE_ENDPOINT") or ""
+    model = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv("AZURE_deployment_name") or os.getenv("AZURE_MODEL") or ""
+    return api_key, endpoint, model
+
+
+def _get_generic_env_vars(name: str) -> tuple[str, str, str]:
+    """Get generic environment variables for non-Azure providers."""
+    api_key = _get_env(name, "api_key", "")
+    endpoint = (_get_env(name, "base_url", _get_env(name, "endpoint", "")) or "").strip()
+    model = _get_env(name, "model", _get_env(name, "deployment", _get_env(name, "deployment_name", "")))
+    return api_key, endpoint, model

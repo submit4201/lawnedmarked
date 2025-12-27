@@ -40,34 +40,33 @@ function App() {
 
   usePolling(selectedAgent);
 
+  // Keyboard shortcut lookup table
+  const KEYBOARD_NAV: Record<string, string> = {
+    'd': 'DASHBOARD',
+    'o': 'OPERATIONS',
+    'f': 'FINANCE',
+    's': 'STRATEGY',
+    'l': 'LEGAL',
+    'h': 'HR',
+  };
+
   // ! Keyboard shortcuts for power users
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-    switch (e.key.toLowerCase()) {
-      case 'd':
-        setCurrentView('DASHBOARD');
-        break;
-      case 'o':
-        setCurrentView('OPERATIONS');
-        break;
-      case 'f':
-        setCurrentView('FINANCE');
-        break;
-      case 's':
-        setCurrentView('STRATEGY');
-        break;
-      case 'l':
-        setCurrentView('LEGAL');
-        break;
-      case 'h':
-        setCurrentView('HR');
-        break;
-      case ' ': // Spacebar to end turn
-        e.preventDefault();
-        handleEndTurn();
-        break;
+    const key = e.key.toLowerCase();
+
+    // Handle navigation keys
+    if (key in KEYBOARD_NAV) {
+      setCurrentView(KEYBOARD_NAV[key]);
+      return;
+    }
+
+    // Handle spacebar for end turn
+    if (key === ' ') {
+      e.preventDefault();
+      handleEndTurn();
     }
   }, []);
 
