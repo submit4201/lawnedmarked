@@ -26,9 +26,16 @@ class TurnLogger:
             self.log_dir = log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def log_turn(self, agent_id: str, step_idx: int, content: str, tool_calls: list = None, tool_results: list = None, command_extraction: Any = None):
+    def log_turn(self, ctx: TurnContext):
         """Log the turn step to a markdown file."""
-        ctx = TurnContext(
+        self._log_turn_context(ctx)
+
+    @staticmethod
+    def create_context(agent_id: str, step_idx: int, content: str, 
+                       tool_calls: list = None, tool_results: list = None, 
+                       command_extraction: Any = None) -> TurnContext:
+        """Factory method to create TurnContext with defaults."""
+        return TurnContext(
             agent_id=agent_id, 
             step_idx=step_idx, 
             content=content, 
@@ -36,7 +43,6 @@ class TurnLogger:
             tool_results=tool_results or [], 
             command_extraction=command_extraction
         )
-        self._log_turn_context(ctx)
 
     def _log_turn_context(self, ctx: TurnContext):
         filepath = self._get_log_filepath(ctx.agent_id)

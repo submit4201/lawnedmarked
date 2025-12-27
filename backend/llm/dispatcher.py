@@ -17,7 +17,7 @@ import traceback
 from pathlib import Path
 
 # New helper classes
-from .turn_logger import TurnLogger
+from .turn_logger import TurnLogger, TurnContext
 from .response_parser import ResponseParser
 
 # --- Constants for System Agents ---
@@ -438,7 +438,7 @@ class LLMDispatcher:
         notes: str
     ) -> dict:
         """Finalize turn by logging and saving notes."""
-        self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
+        self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or []))
         if notes and self.session_store:
             self.session_store.append_note(agent_id, notes)
         return {"events": emitted_events, "thoughts": thoughts, "notes": notes}
@@ -532,7 +532,7 @@ class LLMDispatcher:
         # --- Tool Call Execution ---
         if not self.tool_executor:
                 if tool_calls:
-                    self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
+                    self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or []))
                     return {"error": "Tool calls provided but no tool_executor configured"}
         else:
             turn_ended, last_event_id = self._execute_tool_calls(
@@ -541,7 +541,7 @@ class LLMDispatcher:
             if turn_ended:
                 return self._finalize_turn(agent_id, step_idx, content, tool_calls, step_tool_results, emitted_events, thoughts, notes)
 
-        self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, None)
+        self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or []))
         
         # Continue to next step
         return (last_event_id, notes)
@@ -561,7 +561,7 @@ class LLMDispatcher:
         
         if extraction.command_name:
             if self.command_executor is None:
-                self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, extraction)
+                self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or [], extraction))
                 return {"error": "No command_executor configured"}
             
             try:
@@ -571,7 +571,7 @@ class LLMDispatcher:
                     payload_json=extraction.payload_json,
                 )
             except Exception as exc:
-                self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, extraction)
+                self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or [], extraction))
                 return {"error": str(exc), "thoughts": thoughts, "events": emitted_events}
             
             success, events, message = self.command_executor(agent_id, command)
@@ -582,11 +582,11 @@ class LLMDispatcher:
                     "role": "user",
                     "content": f"COMMAND ERROR ({extraction.command_name}): {message}"
                 })
-                self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, extraction)
+                self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or [], extraction))
                 return None # Continue loop
             
             emitted_events.extend(events)
-            self.logger.log_turn(agent_id, step_idx, content, tool_calls, step_tool_results, extraction)
+            self.logger.log_turn(TurnContext(agent_id, step_idx, content, tool_calls or [], step_tool_results or [], extraction))
             return {"events": emitted_events, "thoughts": thoughts, "notes": notes} # Return after success for fallback
 
         return None # No command found, continue

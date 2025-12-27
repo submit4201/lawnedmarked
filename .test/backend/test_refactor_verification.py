@@ -156,9 +156,10 @@ def test_factory_registry():
 
 # --- TurnLogger Refactor Test ---
 def test_turn_logger_refactor(tmp_path):
-    from backend.llm.turn_logger import TurnLogger
+    from backend.llm.turn_logger import TurnLogger, TurnContext
     logger = TurnLogger(log_dir=tmp_path)
-    logger.log_turn("agent1", 0, "content", tool_calls=[{"function": {"name": "test"}}])
+    ctx = TurnContext("agent1", 0, "content", tool_calls=[{"function": {"name": "test"}}])
+    logger.log_turn(ctx)
     
     files = list(tmp_path.glob("*.md"))
     assert len(files) == 1
