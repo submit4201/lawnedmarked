@@ -116,7 +116,12 @@ def test_azure_build_chat_payload():
     assert payload[1]["content"] == '{"some": "json"}'
 
 def test_azure_parse_chat_response():
-    provider = MockAzureProvider()
+    from backend.llm.providers.aiprojectspro import AzureAIProjectsProvider, AzureAIProjectsConfig
+    
+    # Create real provider with minimal config
+    config = AzureAIProjectsConfig()
+    provider = AzureAIProjectsProvider.__new__(AzureAIProjectsProvider)
+    provider.config = config
     
     # Mock response object structure
     class MockMessage:

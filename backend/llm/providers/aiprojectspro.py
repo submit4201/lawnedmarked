@@ -112,28 +112,36 @@ class AzureAIProjectsProvider(LLMProviderBase):
 
     def _parse_chat_response(self, response: Any) -> dict:
         """Parse the response from Azure AI Projects client."""
+        content = self._extract_content(response)
+        tool_calls = self._extract_tool_calls(response)
+        return {"role": "assistant", "content": content, "tool_calls": tool_calls}
+
+    def _extract_content(self, response: Any) -> str:
+        """Extract content from response, checking output_text then choices."""
         content = getattr(response, "output_text", "")
-        if not content and hasattr(response, "choices"):
-             content = response.choices[0].message.content
-             
-        tool_calls = []
+        if content:
+            return content
         if hasattr(response, "choices") and response.choices:
-            msg = response.choices[0].message
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    tool_calls.append({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
-                    })
+            return response.choices[0].message.content or ""
+        return ""
+
+    def _extract_tool_calls(self, response: Any) -> list:
+        """Extract tool calls from response choices."""
+        if not hasattr(response, "choices") or not response.choices:
+            return []
         
+        msg = response.choices[0].message
+        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+            return []
+        
+        return [self._format_tool_call(tc) for tc in msg.tool_calls]
+
+    def _format_tool_call(self, tc: Any) -> dict:
+        """Format a single tool call to OpenAI format."""
         return {
-            "role": "assistant",
-            "content": content or "",
-            "tool_calls": tool_calls
+            "id": tc.id,
+            "type": "function", 
+            "function": {"name": tc.function.name, "arguments": tc.function.arguments}
         }
 
 if __name__ == "__main__":

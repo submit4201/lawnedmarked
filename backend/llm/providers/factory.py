@@ -135,14 +135,26 @@ def create_provider_from_env(name: str | None = None) -> tuple[LLMProviderBase, 
     """Create a provider from environment variables dynamically."""
     name = (name or os.getenv("LLM_PROVIDER") or "local").strip().lower()
 
-    # Special providers that don't need context
+    # Check special providers first
+    special = _check_special_providers(name)
+    if special:
+        return special
+
+    ctx = _build_provider_context(name)
+    return _resolve_provider(name, ctx)
+
+
+def _check_special_providers(name: str) -> tuple[LLMProviderBase, str] | None:
+    """Check for special providers that don't need context."""
     if name == "mock":
         return MockLLM(), "MockLLM"
     if name == "human":
         return HumanProvider(), "HumanPlayer"
+    return None
 
-    ctx = _build_provider_context(name)
 
+def _resolve_provider(name: str, ctx: ProviderContext) -> tuple[LLMProviderBase, str]:
+    """Resolve provider from registry, URL detection, or defaults."""
     # Registry lookup
     if name in _PROVIDER_REGISTRY:
         return _PROVIDER_REGISTRY[name](ctx)
