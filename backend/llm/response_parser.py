@@ -107,31 +107,45 @@ class ResponseParser:
     @staticmethod
     def _clean_json_content(raw_content: str) -> str | None:
         """Clean and extract JSON string from raw content."""
-        clean = raw_content.strip()
-        # Remove markdown code blocks
-        if clean.startswith("```"):
-            clean = re.sub(r"^```(?:json)?\n", "", clean)
-            clean = re.sub(r"\n```$", "", clean)
+        clean = ResponseParser._strip_markdown_code_block(raw_content.strip())
         
         # Extract JSON object
-        start = clean.find("{")
-        end = clean.rfind("}")
+        json_str = ResponseParser._extract_json_object(clean)
+        if not json_str:
+            return None
+        
+        # Handle escaped JSON if needed
+        return ResponseParser._unescape_json_if_needed(json_str, clean)
+
+    @staticmethod
+    def _strip_markdown_code_block(content: str) -> str:
+        """Remove markdown code block wrappers."""
+        if not content.startswith("```"):
+            return content
+        clean = re.sub(r"^```(?:json)?\n", "", content)
+        return re.sub(r"\n```$", "", clean)
+
+    @staticmethod
+    def _extract_json_object(content: str) -> str | None:
+        """Extract JSON object from content by finding { } bounds."""
+        start = content.find("{")
+        end = content.rfind("}")
         if start == -1 or end == -1:
             return None
-            
-        json_str = clean[start:end+1]
+        return content[start:end+1]
+
+    @staticmethod
+    def _unescape_json_if_needed(json_str: str, original_clean: str) -> str:
+        """Handle escaped JSON strings."""
+        if "\\\"" not in json_str:
+            return json_str
         
-        # Handle escaped JSON
-        if "\\\"" in json_str:
-            try:
-                if clean.startswith("\"") and clean.endswith("\""):
-                    return json.loads(clean)
-                else:
-                    return json_str.replace("\\\"", "\"").replace("\\\\", "\\")
-            except:
-                pass
-        
-        return json_str
+        try:
+            if original_clean.startswith("\"") and original_clean.endswith("\""):
+                return json.loads(original_clean)
+            return json_str.replace("\\\"", "\"").replace("\\\\", "\\")
+        except Exception:
+            return json_str
 
     @staticmethod
     def is_info_tool(name: str) -> bool:

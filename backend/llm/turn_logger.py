@@ -39,36 +39,50 @@ class TurnLogger:
         self._log_turn_context(ctx)
 
     def _log_turn_context(self, ctx: TurnContext):
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        filename = f"{date_str}_{ctx.agent_id}.md"
-        filepath = self.log_dir / filename
+        filepath = self._get_log_filepath(ctx.agent_id)
         
         with open(filepath, "a", encoding="utf-8") as f:
-            if ctx.step_idx == 0:
-                f.write(f"\n---\n# Turn Log: {ctx.agent_id} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
-            f.write(f"---\n## Step {ctx.step_idx + 1}\n\n")
-            f.write("### Raw Response\n\n")
-            f.write(f"```\n{ctx.content}\n```\n\n")
+            self._write_header_if_first_step(f, ctx)
+            self._write_step_content(f, ctx)
+            self._write_structured_sections(f, ctx)
+            self._write_footer(f, ctx)
 
-            found_sections = self._log_response_sections(f, ctx.content)
-            
-            if ctx.tool_calls:
-                self._log_tool_calls(f, ctx.tool_calls)
-                found_sections = True
+    def _get_log_filepath(self, agent_id: str) -> Path:
+        """Get the log file path for this agent."""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        return self.log_dir / f"{date_str}_{agent_id}.md"
 
-            if ctx.command_extraction and ctx.command_extraction.command_name:
-                self._log_command_extraction(f, ctx.command_extraction)
-                found_sections = True
+    def _write_header_if_first_step(self, f, ctx: TurnContext):
+        """Write turn header for first step."""
+        if ctx.step_idx == 0:
+            f.write(f"\n---\n# Turn Log: {ctx.agent_id} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
-            if not found_sections and ctx.content.strip():
-                if ctx.content.strip() != "Executing tool calls...":
-                    f.write(f"### Raw Response\n{ctx.content.strip()}\n\n")
-            
-            if ctx.tool_results:
-                self._log_tool_results(f, ctx.tool_results)
+    def _write_step_content(self, f, ctx: TurnContext):
+        """Write step header and raw response."""
+        f.write(f"---\n## Step {ctx.step_idx + 1}\n\n")
+        f.write("### Raw Response\n\n")
+        f.write(f"```\n{ctx.content}\n```\n\n")
 
-            f.write("---\n")
+    def _write_structured_sections(self, f, ctx: TurnContext):
+        """Write parsed sections, tool calls, and command extraction."""
+        found_sections = self._log_response_sections(f, ctx.content)
+        
+        if ctx.tool_calls:
+            self._log_tool_calls(f, ctx.tool_calls)
+            found_sections = True
+
+        if ctx.command_extraction and ctx.command_extraction.command_name:
+            self._log_command_extraction(f, ctx.command_extraction)
+            found_sections = True
+
+        if not found_sections and ctx.content.strip() and ctx.content.strip() != "Executing tool calls...":
+            f.write(f"### Raw Response\n{ctx.content.strip()}\n\n")
+
+    def _write_footer(self, f, ctx: TurnContext):
+        """Write tool results and separator."""
+        if ctx.tool_results:
+            self._log_tool_results(f, ctx.tool_results)
+        f.write("---\n")
 
     def _log_response_sections(self, f, content: str) -> bool:
         patterns = [

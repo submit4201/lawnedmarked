@@ -50,6 +50,13 @@ class AzureAIInferenceProvider(LLMProviderBase):
     def client(self):
         return self._client
 
+    # Supported OpenAI-compatible parameters
+    DIRECT_PARAMS = frozenset({
+        "max_tokens", "temperature", "top_p", "frequency_penalty",
+        "presence_penalty", "stop", "seed", "response_format", "tool_choice",
+        "parallel_tool_calls", "logprobs", "top_logprobs", "n", "user", "stream",
+    })
+
     async def chat(
         self,
         messages: list[dict],
@@ -58,42 +65,44 @@ class AzureAIInferenceProvider(LLMProviderBase):
         config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> dict:
-        # The azure-ai-inference client supports passing messages as a list of dicts
-        # in OpenAI chat format: [{"role": "user", "content": "..."}, ...]
+        complete_kwargs = self._build_chat_kwargs(messages, tools, kwargs)
+        resp = await self._client.complete(**complete_kwargs)
+        return self._parse_response(resp)
 
-        direct_keys = {
-            # Common OpenAI chat-completions params supported by Azure AI Inference.
-            "max_tokens",
-            "temperature",
-            "top_p",
-            "frequency_penalty",
-            "presence_penalty",
-            "stop",
-            "seed",
-            "response_format",
-            "tool_choice",
-            "parallel_tool_calls",
-            "logprobs",
-            "top_logprobs",
-            "n",
-            "user",
-            "stream",
-        }
-
+    def _build_chat_kwargs(
+        self, 
+        messages: list[dict], 
+        tools: Optional[list[dict]], 
+        call_kwargs: dict
+    ) -> Dict[str, Any]:
+        """Build kwargs dict for chat completion call."""
         temperature = float((self.config.extra or {}).get("temperature", 0.2))
-
+        
         complete_kwargs: Dict[str, Any] = {
             "messages": messages,
             "temperature": temperature,
         }
 
-        # `model` is optional for some endpoints, but required for GitHub Models.
         if self.config.model:
             complete_kwargs["model"] = self.config.model
 
         if tools is not None:
             complete_kwargs["tools"] = tools
 
+        # Process extra config
+        model_extras = self._process_extra_config(complete_kwargs)
+        if model_extras:
+            complete_kwargs["model_extras"] = model_extras
+
+        # Per-call overrides
+        for k, v in call_kwargs.items():
+            if k not in complete_kwargs:
+                complete_kwargs[k] = v
+
+        return complete_kwargs
+
+    def _process_extra_config(self, complete_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Process extra config into direct params or model extras."""
         extras = dict(self.config.extra or {})
         extras.pop("api_version", None)
 
@@ -101,21 +110,14 @@ class AzureAIInferenceProvider(LLMProviderBase):
         for k, v in extras.items():
             if k == "temperature":
                 continue
-            if k in direct_keys and k not in complete_kwargs:
+            if k in self.DIRECT_PARAMS and k not in complete_kwargs:
                 complete_kwargs[k] = v
             else:
                 model_extras[k] = v
+        return model_extras
 
-        if model_extras:
-            # For model-specific parameters, Azure AI Inference supports pass-through.
-            complete_kwargs["model_extras"] = model_extras
-
-        # Allow explicit per-call overrides via kwargs.
-        for k, v in kwargs.items():
-            if k not in complete_kwargs:
-                complete_kwargs[k] = v
-
-        resp = await self._client.complete(**complete_kwargs)
+    def _parse_response(self, resp: Any) -> dict:
+        """Parse response into OpenAI-compatible format."""
         msg = resp.choices[0].message if getattr(resp, "choices", None) else None
         content = getattr(msg, "content", "") if msg else ""
         tool_calls = getattr(msg, "tool_calls", None) if msg else None
