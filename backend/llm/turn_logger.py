@@ -72,17 +72,32 @@ class TurnLogger:
     def _write_structured_sections(self, f, ctx: TurnContext):
         """Write parsed sections, tool calls, and command extraction."""
         found_sections = self._log_response_sections(f, ctx.content)
-        
-        if ctx.tool_calls:
-            self._log_tool_calls(f, ctx.tool_calls)
-            found_sections = True
+        found_sections = self._try_log_tool_calls(f, ctx.tool_calls) or found_sections
+        found_sections = self._try_log_command(f, ctx.command_extraction) or found_sections
+        self._log_fallback_content(f, ctx.content, found_sections)
 
-        if ctx.command_extraction and ctx.command_extraction.command_name:
-            self._log_command_extraction(f, ctx.command_extraction)
-            found_sections = True
+    def _try_log_tool_calls(self, f, tool_calls: list) -> bool:
+        """Log tool calls if present. Returns True if logged."""
+        if not tool_calls:
+            return False
+        self._log_tool_calls(f, tool_calls)
+        return True
 
-        if not found_sections and ctx.content.strip() and ctx.content.strip() != "Executing tool calls...":
-            f.write(f"### Raw Response\n{ctx.content.strip()}\n\n")
+    def _try_log_command(self, f, extraction) -> bool:
+        """Log command extraction if present. Returns True if logged."""
+        if not extraction or not getattr(extraction, 'command_name', None):
+            return False
+        self._log_command_extraction(f, extraction)
+        return True
+
+    def _log_fallback_content(self, f, content: str, found_sections: bool):
+        """Log raw content as fallback if no sections found."""
+        content_stripped = content.strip()
+        if found_sections or not content_stripped:
+            return
+        if content_stripped == "Executing tool calls...":
+            return
+        f.write(f"### Raw Response\n{content_stripped}\n\n")
 
     def _write_footer(self, f, ctx: TurnContext):
         """Write tool results and separator."""

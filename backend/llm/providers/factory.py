@@ -202,12 +202,30 @@ def _build_provider_context(name: str) -> ProviderContext:
     return ProviderContext(name=name, api_key=api_key, endpoint=endpoint, model=model, extra=extra)
 
 
+# Azure environment variable fallback order
+_AZURE_ENV_KEYS = {
+    "api_key": ["AZURE_OPENAI_API_KEY", "AZURE_api_key", "AZURE_API_KEY"],
+    "endpoint": ["AZURE_OPENAI_BASE_URL", "AZURE_base_url", "AZURE_ENDPOINT"],
+    "model": ["AZURE_OPENAI_DEPLOYMENT", "AZURE_deployment_name", "AZURE_MODEL"],
+}
+
+
+def _get_first_env(*keys: str, default: str = "") -> str:
+    """Get first non-empty environment variable from list of keys."""
+    for key in keys:
+        val = os.getenv(key)
+        if val:
+            return val
+    return default
+
+
 def _get_azure_env_vars() -> tuple[str, str, str]:
     """Get Azure-specific environment variables."""
-    api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_api_key") or os.getenv("AZURE_API_KEY") or ""
-    endpoint = os.getenv("AZURE_OPENAI_BASE_URL") or os.getenv("AZURE_base_url") or os.getenv("AZURE_ENDPOINT") or ""
-    model = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv("AZURE_deployment_name") or os.getenv("AZURE_MODEL") or ""
-    return api_key, endpoint, model
+    return (
+        _get_first_env(*_AZURE_ENV_KEYS["api_key"]),
+        _get_first_env(*_AZURE_ENV_KEYS["endpoint"]),
+        _get_first_env(*_AZURE_ENV_KEYS["model"]),
+    )
 
 
 def _get_generic_env_vars(name: str) -> tuple[str, str, str]:
