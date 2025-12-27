@@ -9,7 +9,11 @@ export const FinanceView = ({ selectedAgent }: { selectedAgent: string }) => {
     const [repayAmount, setRepayAmount] = useState(1000);
 
     const handleRepay = async () => {
-        await GameService.submitCommand(selectedAgent, 'REPAY_LOAN', { amount: repayAmount });
+        // ! Fix: Using correct command name MAKE_DEBT_PAYMENT instead of REPAY_LOAN
+        await GameService.submitCommand(selectedAgent, 'MAKE_DEBT_PAYMENT', {
+            debt_id: 'primary_loc',  // Default LOC debt ID
+            amount: repayAmount
+        });
         GameService.fetchState(selectedAgent);
     };
 
@@ -118,7 +122,6 @@ const PricingSlider = ({ serviceType, selectedAgent }: { serviceType: string, se
 
     const handleUpdate = async () => {
         setLoading(true);
-        // Map serviceType to backend enum if needed, assuming lowercase matches for now
         await GameService.submitCommand(selectedAgent, 'SET_PRICE', {
             service_type: serviceType.toUpperCase(),
             price: price
@@ -152,4 +155,108 @@ const PricingSlider = ({ serviceType, selectedAgent }: { serviceType: string, se
     );
 };
 
+// Loan Request Panel
+const LoanPanel = ({ selectedAgent }: { selectedAgent: string }) => {
+    const [loanType, setLoanType] = useState<'LOC' | 'EQUIPMENT' | 'EXPANSION' | 'EMERGENCY'>('LOC');
+    const [amount, setAmount] = useState(5000);
+    const [loading, setLoading] = useState(false);
 
+    const loanInfo = {
+        LOC: { rate: '8%', term: 'Revolving', desc: 'Line of Credit' },
+        EQUIPMENT: { rate: '6%', term: '24 weeks', desc: 'Equipment Financing' },
+        EXPANSION: { rate: '7%', term: '52 weeks', desc: 'Business Expansion' },
+        EMERGENCY: { rate: '12%', term: '8 weeks', desc: 'Emergency Capital' },
+    };
+
+    const handleTakeLoan = async () => {
+        setLoading(true);
+        await GameService.submitCommand(selectedAgent, 'TAKE_LOAN', {
+            loan_type: loanType,
+            amount: amount
+        });
+        setLoading(false);
+    };
+
+    return (
+        <div className="bg-white/5 p-4 rounded border border-white/10">
+            <div className="text-sm text-slate-300 mb-3 font-mono uppercase">Request Capital</div>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+                {(Object.keys(loanInfo) as Array<keyof typeof loanInfo>).map(type => (
+                    <button
+                        key={type}
+                        onClick={() => setLoanType(type)}
+                        className={`p-2 text-xs rounded border transition-colors ${loanType === type
+                                ? 'bg-neon-green/20 border-neon-green text-neon-green'
+                                : 'border-white/20 text-slate-400 hover:border-white/40'
+                            }`}
+                    >
+                        <div className="font-bold">{loanInfo[type].desc}</div>
+                        <div className="text-[10px] opacity-70">{loanInfo[type].rate} / {loanInfo[type].term}</div>
+                    </button>
+                ))}
+            </div>
+            <div className="mb-3">
+                <div className="flex justify-between text-xs mb-1">
+                    <span className="text-slate-500">Amount</span>
+                    <span className="text-white font-bold">${amount.toLocaleString()}</span>
+                </div>
+                <input
+                    type="range"
+                    min="1000"
+                    max="50000"
+                    step="1000"
+                    value={amount}
+                    onChange={(e) => setAmount(parseInt(e.target.value))}
+                    className="w-full accent-neon-green h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                />
+            </div>
+            <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={handleTakeLoan}
+                disabled={loading}
+                className="w-full py-2 bg-neon-green/20 border border-neon-green/50 text-neon-green font-bold tracking-widest hover:bg-neon-green/30 transition-colors uppercase text-sm rounded disabled:opacity-50"
+            >
+                {loading ? 'PROCESSING...' : 'REQUEST FUNDS'}
+            </motion.button>
+        </div>
+    );
+};
+
+// Marketing Campaign Cards
+const MarketingPanel = ({ selectedAgent }: { selectedAgent: string }) => {
+    const campaigns = [
+        { type: 'FLYERS', name: 'Local Flyers', cost: 100, reach: '500 homes', icon: '📄' },
+        { type: 'SOCIAL_MEDIA', name: 'Social Media', cost: 250, reach: '2K impressions', icon: '📱' },
+        { type: 'NEWSPAPER_AD', name: 'Newspaper Ad', cost: 500, reach: '5K readers', icon: '📰' },
+        { type: 'SPONSORSHIP', name: 'Event Sponsor', cost: 1000, reach: 'Community event', icon: '🏆' },
+    ];
+
+    const handleInvest = async (campaignType: string, cost: number) => {
+        await GameService.submitCommand(selectedAgent, 'INVEST_IN_MARKETING', {
+            location_id: 'LOC_001',  // Default location
+            campaign_type: campaignType,
+            cost: cost
+        });
+    };
+
+    return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {campaigns.map(c => (
+                <motion.button
+                    key={c.type}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleInvest(c.type, c.cost)}
+                    className="p-4 bg-white/5 rounded border border-white/10 hover:border-neon-pink/50 hover:bg-neon-pink/5 transition-all text-left group"
+                >
+                    <div className="text-2xl mb-2">{c.icon}</div>
+                    <div className="text-sm text-white font-bold mb-1">{c.name}</div>
+                    <div className="text-[10px] text-slate-500 mb-2">{c.reach}</div>
+                    <div className="text-xs text-neon-pink font-mono group-hover:font-bold transition-all">
+                        ${c.cost}
+                    </div>
+                </motion.button>
+            ))}
+        </div>
+    );
+};

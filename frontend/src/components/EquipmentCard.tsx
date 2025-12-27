@@ -1,11 +1,14 @@
 import { motion } from 'framer-motion';
-import { Settings, AlertTriangle, CheckCircle, Wrench, Zap, LucideIcon } from 'lucide-react';
+import { Settings, AlertTriangle, CheckCircle, Wrench, Zap } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Machine } from '../store/gameStore.ts';
 import { useMemo } from 'react';
 
 interface EquipmentCardProps {
     machine: Machine;
     onMaintain?: (id: string) => void;
+    onFix?: (id: string) => void;
+    onSell?: (id: string) => void;
 }
 
 interface StatusConfig {
@@ -101,7 +104,7 @@ const ConditionRing = ({ condition, status, machineId }: { condition: number, st
     );
 };
 
-export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
+export const EquipmentCard = ({ machine, onMaintain, onFix, onSell }: EquipmentCardProps) => {
     const status = useMachineStatus(machine);
     const StatusIcon = status.icon;
     const isBroken = machine.status === 'BROKEN';
@@ -180,6 +183,45 @@ export const EquipmentCard = ({ machine, onMaintain }: EquipmentCardProps) => {
             >
                 {isRepairing ? 'REPAIR IN PROGRESS' : condition > 95 ? 'OPTIMAL CONDITION' : 'SCHEDULE MAINTENANCE'}
             </motion.button>
+
+            {/* Emergency Repair for broken machines */}
+            {isBroken && onFix && (
+                <motion.button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onFix(machine.machine_id);
+                    }}
+                    className="w-full mt-2 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider
+                        bg-crimson/20 text-crimson border border-crimson/50
+                        hover:bg-crimson/30 hover:border-crimson transition-all duration-300"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    animate={{
+                        boxShadow: ['0 0 5px #ff3b30', '0 0 15px #ff3b30', '0 0 5px #ff3b30']
+                    }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                >
+                    ⚡ EMERGENCY REPAIR
+                </motion.button>
+            )}
+
+            {/* Sell button - appears on all equipment */}
+            {onSell && (
+                <motion.button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSell(machine.machine_id);
+                    }}
+                    className="w-full mt-2 py-1.5 rounded font-mono text-[10px] uppercase tracking-wider
+                        bg-white/5 text-slate-400 border border-white/10
+                        hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-300
+                        opacity-50 hover:opacity-100"
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                >
+                    Sell Unit (~${Math.round(1000 * (condition / 100))})
+                </motion.button>
+            )}
 
             {isBroken && (
                 <motion.div

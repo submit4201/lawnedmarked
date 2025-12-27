@@ -14,7 +14,7 @@ from typing import List, Optional
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Body
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles # Added for robust static file serving if needed
 from pydantic import BaseModel
@@ -236,6 +236,42 @@ def _print_tick_summary(result: dict):
     except Exception:
         # Logging failures should not prevent the response from being returned
         pass
+
+
+@app.post("/api/submit_command")
+async def submit_command(
+    agent_id: str = Query(..., description="The agent executing the command"),
+    command_name: str = Query(..., description="Name of the command (e.g., SET_PRICE, BUY_SUPPLIES)"),
+    payload: dict = Body(default={}, description="Command-specific payload")
+):
+    """Execute a game command for an agent.
+    
+    This is the primary endpoint for UI players to execute game actions,
+    providing parity with LLM player capabilities.
+    """
+    try:
+        result = ApplicationFactory._handle_submit_command(engine, {
+            "agent_id": agent_id,
+            "command_name": command_name,
+            "payload": payload
+        })
+        return result
+    except Exception as e:
+        return {"success": False, "message": str(e), "error": str(type(e).__name__)}
+
+
+@app.post("/api/run_turn")
+async def run_turn(agent_id: str = Query(..., description="The agent to run an AI turn for")):
+    """Run an AI turn for the specified agent.
+    
+    Triggers the LLM dispatcher to execute a full player turn,
+    including state analysis, tool usage, and command execution.
+    """
+    try:
+        result = await llm_dispatcher.run_player_turn(agent_id, history_messages=[])
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "error_type": str(type(e).__name__)}
 
 
 @app.get("/ui")

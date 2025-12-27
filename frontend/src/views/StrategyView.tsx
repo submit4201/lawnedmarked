@@ -1,10 +1,25 @@
 
-
 import { Briefcase, Handshake, ShieldAlert } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { GameService } from '../services/gameService';
 
-export const StrategyView = () => {
+interface StrategyViewProps {
+    selectedAgent: string;
+}
+
+export const StrategyView = ({ selectedAgent }: StrategyViewProps) => {
     const game = useGameStore();
+
+    const handleNegotiate = async (vendorId: string, locationId: string) => {
+        await GameService.submitCommand(selectedAgent, 'NEGOTIATE_VENDOR_DEAL', {
+            location_id: locationId,
+            vendor_id: vendorId,
+            target_supply_type: 'DETERGENT',
+            requested_discount: 0.05,
+            proposal_text: 'Looking for better bulk pricing on consistent orders'
+        });
+        GameService.fetchState(selectedAgent);
+    };
 
 
     // Mock vendors if not fully implemented in state
@@ -20,8 +35,8 @@ export const StrategyView = () => {
                     <Handshake className="text-neon-cyan" /> Vendor Relations
                 </h2>
                 <div className="space-y-4">
-                    {Object.values(game.locations).flatMap(loc =>
-                        Object.values(loc.vendor_relationships || {})
+                    {Object.entries(game.locations).flatMap(([locId, loc]) =>
+                        Object.values(loc.vendor_relationships || {}).map(vendor => ({ ...vendor, locationId: locId }))
                     ).map((vendor, idx) => (
                         <div key={`${vendor.vendor_id}-${idx}`} className="p-4 bg-white/5 rounded border border-white/10 hover:bg-white/10 transition-colors cursor-pointer group">
                             <div className="flex justify-between items-start mb-2">
@@ -30,7 +45,10 @@ export const StrategyView = () => {
                             </div>
                             <div className="text-xs text-slate-400 mb-3">Unit Price: ${vendor.current_price_per_unit.toFixed(2)}</div>
                             <div className="flex gap-2">
-                                <button className="px-3 py-1 bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan text-xs rounded hover:bg-neon-cyan/20">
+                                <button
+                                    onClick={() => handleNegotiate(vendor.vendor_id, vendor.locationId)}
+                                    className="px-3 py-1 bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan text-xs rounded hover:bg-neon-cyan/20 transition-colors"
+                                >
                                     Negotiate
                                 </button>
                                 {vendor.is_exclusive_contract && (

@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 import os
 from typing import Any, Dict, Tuple, List
-
+from pathlib import Path 
 from adjudication.game_master import GameMaster
 from adjudication.judge import Judge
 from command_handlers import ALL_HANDLERS
@@ -166,7 +166,6 @@ class ApplicationFactory:
             game_engine=game_engine,
         )
 
-    @staticmethod
     @staticmethod
     def _normalize_provider_name(name: str) -> str:
         """Normalize provider name using aliases."""

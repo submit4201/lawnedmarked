@@ -40,13 +40,17 @@ export const GameService = {
         const loadingId = showLoading(`Executing ${commandName}...`);
         try {
             // Server endpoint: /api/submit_command (proxied)
-            const response = await axios.post(`${BASE_URL}/api/submit_command`, null, {
-                params: {
-                    agent_id: agentId,
-                    command_name: commandName,
-                },
-                data: payload
-            });
+            // Payload goes in POST body, agent_id and command_name as query params
+            const response = await axios.post(
+                `${BASE_URL}/api/submit_command`,
+                payload,
+                {
+                    params: {
+                        agent_id: agentId,
+                        command_name: commandName,
+                    }
+                }
+            );
             dismissToast(loadingId);
 
             if (response.data?.success) {

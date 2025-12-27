@@ -197,7 +197,7 @@ function App() {
               {currentView === 'DASHBOARD' && renderDashboard()}
               {currentView === 'OPERATIONS' && <OperationsView selectedAgent={selectedAgent} />}
               {currentView === 'FINANCE' && <FinanceView selectedAgent={selectedAgent} />}
-              {currentView === 'STRATEGY' && <StrategyView />}
+              {currentView === 'STRATEGY' && <StrategyView selectedAgent={selectedAgent} />}
               {currentView === 'LEGAL' && <LegalView selectedAgent={selectedAgent} />}
               {currentView === 'OBSERVER' && <PlaceholderView title="Observer Console" icon={LayoutGrid} />}
             </motion.div>

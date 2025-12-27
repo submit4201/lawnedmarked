@@ -2,20 +2,50 @@ import { useState } from 'react';
 
 import { useGameStore } from '../store/gameStore';
 import { EquipmentCard } from '../components/EquipmentCard';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Plus, Package } from 'lucide-react';
 import { GameService } from '../services/gameService';
+import { motion } from 'framer-motion';
 
 export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => {
     const game = useGameStore();
 
     const handleMaintain = async (machineId: string) => {
-        // Find location for machine
         const loc = Object.values(game.locations).find(l => l.equipment[machineId]);
         if (loc) {
             await GameService.maintainMachine(selectedAgent, loc.location_id, machineId);
-            // Refresh state
             GameService.fetchState(selectedAgent);
         }
+    };
+
+    const handleFix = async (machineId: string) => {
+        const loc = Object.values(game.locations).find(l => l.equipment[machineId]);
+        if (loc) {
+            await GameService.submitCommand(selectedAgent, 'FIX_MACHINE', {
+                location_id: loc.location_id,
+                machine_id: machineId
+            });
+            GameService.fetchState(selectedAgent);
+        }
+    };
+
+    const handleSell = async (machineId: string) => {
+        const loc = Object.values(game.locations).find(l => l.equipment[machineId]);
+        if (loc) {
+            await GameService.submitCommand(selectedAgent, 'SELL_EQUIPMENT', {
+                location_id: loc.location_id,
+                machine_id: machineId
+            });
+            GameService.fetchState(selectedAgent);
+        }
+    };
+
+    const handleBuy = async (locationId: string, equipmentType: string) => {
+        await GameService.submitCommand(selectedAgent, 'BUY_EQUIPMENT', {
+            location_id: locationId,
+            equipment_type: equipmentType,
+            vendor_id: 'COMMERCIAL_SUPPLIER'
+        });
+        GameService.fetchState(selectedAgent);
     };
 
     return (
@@ -61,6 +91,8 @@ export const OperationsView = ({ selectedAgent }: { selectedAgent: string }) => 
                                 key={machine.machine_id}
                                 machine={machine}
                                 onMaintain={handleMaintain}
+                                onFix={handleFix}
+                                onSell={handleSell}
                             />
                         ))
                     )

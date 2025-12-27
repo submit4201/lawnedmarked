@@ -214,12 +214,24 @@ def test_vendor_handler_refactor():
     from backend.projection.handlers.vendor_handlers import handle_vendor_negotiation_result
     from core.models import AgentState, VendorRelationship
     from core.events import VendorNegotiationResult
+    from datetime import datetime
+    
+    # Create a mock location with vendor_relationships dict
+    class MockLocation:
+        def __init__(self):
+            self.vendor_relationships = {}
     
     # Removed 'agents' argument which does not exist on AgentState
-    state = AgentState(agent_id="test_agent", locations={"loc1": type("Loc", (), {"vendor_relationships": {}})()})
+    state = AgentState(agent_id="test_agent", locations={"loc1": MockLocation()})
     event = VendorNegotiationResult(
-        event_id="1", week=1, location_id="loc1", vendor_id="v1",
-        negotiation_succeeded=True, proposed_discount=0.1
+        event_id="evt_1", 
+        agent_id="test_agent",
+        timestamp=datetime.now(),
+        week=1, 
+        location_id="loc1", 
+        vendor_id="v1",
+        negotiation_succeeded=True, 
+        proposed_discount=0.1
     )
     
     new_state = handle_vendor_negotiation_result(state, event)
