@@ -77,23 +77,35 @@ def main():
     print(f"Scanning {ROOT_DIR} for comments...")
     TODO_DIR.mkdir(exist_ok=True)
     
-    all_items = []
+    all_items = _collect_all_items()
     
-    for root, dirs, files in os.walk(ROOT_DIR):
-        # Modify dirs in-place to skip unwanted directories
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        
-        for file in files:
-            file_path = Path(root) / file
-            if file_path.suffix in EXTENSIONS:
-                results = scan_file(file_path)
-                if results:
-                    all_items.extend(results)
-
-    if all_items:
-        _write_report(all_items)
-    else:
+    if not all_items:
         print("No items found.")
+        return
+    
+    _write_report(all_items)
+
+
+def _collect_all_items() -> List[str]:
+    """Walk directory tree and collect all TODO items."""
+    all_items = []
+    for root, dirs, files in os.walk(ROOT_DIR):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        all_items.extend(_scan_directory_files(root, files))
+    return all_items
+
+
+def _scan_directory_files(root: str, files: List[str]) -> List[str]:
+    """Scan all matching files in a directory."""
+    items = []
+    for file in files:
+        file_path = Path(root) / file
+        if file_path.suffix not in EXTENSIONS:
+            continue
+        results = scan_file(file_path)
+        if results:
+            items.extend(results)
+    return items
 
 
 def _write_report(items: List[str]):
