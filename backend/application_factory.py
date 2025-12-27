@@ -273,6 +273,34 @@ class ApplicationFactory:
         return {"agent_state": serial, "locations": serial.get("locations", {})}
 
     @staticmethod
+    def _filter_events_by_last_id(events: List[Any], last_event_id: Any) -> List[Any]:
+        """Filter events to return only those after the specified event ID."""
+        if not last_event_id:
+            return events
+        try:
+            idx = next(
+                i for i, e in enumerate(events) 
+                if getattr(e, "event_id", None) == last_event_id
+            )
+            return events[idx + 1:]
+        except StopIteration:
+            return []
+    
+    @staticmethod
+    def _apply_event_limit(events: List[Any], limit: Any) -> List[Any]:
+        """Apply limit to event list if valid limit is provided."""
+        if limit is None:
+            return events
+        try:
+            n = int(limit)
+            if n > 0:
+                return events[-n:]
+        except (TypeError, ValueError):
+            # If limit cannot be parsed as a positive integer, ignore it and return all events.
+            pass
+        return events
+    
+    @staticmethod
     def _handle_get_history(game_engine: GameEngine, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Handle GET_HISTORY API action."""
         agent_id = payload.get("agent_id", "")
